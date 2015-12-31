@@ -1,10 +1,10 @@
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
-load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("//tensorflow/core:platform/default/build_config.bzl",
-     "tf_get_cuda_version",
-     "tf_get_cudnn_version",
-    )
+load("//tensorflow/tensorflow", "if_cuda")
+load("platform", "cuda_library_path")
+load("platform", "cuda_static_library_path")
+load("platform", "cudnn_library_path")
+load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -31,6 +31,12 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "cuda_headers",
     hdrs = glob([
@@ -43,7 +49,7 @@ cc_library(
 cc_library(
     name = "cudart_static",
     srcs = [
-        "lib64/libcudart_static.a",
+        cuda_static_library_path("cudart"),
     ],
     includes = ["include/"],
     linkopts = [
@@ -57,10 +63,10 @@ cc_library(
 cc_library(
     name = "cudart",
     srcs = [
-        "lib64/libcudart.so." + tf_get_cuda_version(),
+        cuda_library_path("cudart")
     ],
     data = [
-        "lib64/libcudart.so." + tf_get_cuda_version(),
+        cuda_library_path("cudart")
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -70,10 +76,10 @@ cc_library(
 cc_library(
     name = "cublas",
     srcs = [
-        "lib64/libcublas.so." + tf_get_cuda_version(),
+        cuda_library_path("cublas")
     ],
     data = [
-        "lib64/libcublas.so." + tf_get_cuda_version(),
+        cuda_library_path("cublas")
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -83,10 +89,10 @@ cc_library(
 cc_library(
     name = "cudnn",
     srcs = [
-        "lib64/libcudnn.so." + tf_get_cudnn_version(),
+        cudnn_library_path()
     ],
     data = [
-        "lib64/libcudnn.so." + tf_get_cudnn_version(),
+        cudnn_library_path()
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -96,10 +102,10 @@ cc_library(
 cc_library(
     name = "cufft",
     srcs = [
-        "lib64/libcufft.so." + tf_get_cuda_version(),
+        cuda_library_path("cufft")
     ],
     data = [
-        "lib64/libcufft.so." + tf_get_cuda_version(),
+        cuda_library_path("cufft")
     ],
     includes = ["include/"],
     visibility = ["//visibility:public"],
@@ -133,29 +139,29 @@ genrule(
         "include/cuda.h",
         "include/cublas.h",
         "include/cudnn.h",
-        "lib64/libcudart_static.a",
-        "lib64/libcublas.so." + tf_get_cuda_version(),
-        "lib64/libcudnn.so." + tf_get_cudnn_version(),
-        "lib64/libcudart.so." + tf_get_cuda_version(),
-        "lib64/libcufft.so." + tf_get_cuda_version(),
+        cuda_static_library_path("cudart"),
+        cuda_library_path("cublas"),
+        cudnn_library_path(),
+        cuda_library_path("cudart"),
+        cuda_library_path("cufft"),
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
-        "OUTPUTDIR=`readlink -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;",
+        "OUTPUTDIR=`{} -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;".format(readlink_command()),
 
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([
-          "mkdir -p $(@D)/include",
-          "mkdir -p $(@D)/lib64",
-          "touch $(@D)/include/cuda.h",
-          "touch $(@D)/include/cublas.h",
-          "touch $(@D)/include/cudnn.h",
-          "touch $(@D)/lib64/libcudart_static.a",
-          "touch $(@D)/lib64/libcublas.so." + tf_get_cuda_version(),
-          "touch $(@D)/lib64/libcudnn.so." + tf_get_cudnn_version(),
-          "touch $(@D)/lib64/libcudart.so." + tf_get_cuda_version(),
-          "touch $(@D)/lib64/libcufft.so." + tf_get_cuda_version(),
-            ]),
+           "mkdir -p $(@D)/include",
+           "mkdir -p $(@D)/lib64",
+           "touch $(@D)/include/cuda.h",
+           "touch $(@D)/include/cublas.h",
+           "touch $(@D)/include/cudnn.h",
+           "touch $(@D)/{}".format(cuda_static_library_path("cudart")),
+           "touch $(@D)/{}".format(cuda_library_path("cublas")),
+           "touch $(@D)/{}".format(cudnn_library_path()),
+           "touch $(@D)/{}".format(cuda_library_path("cudart")),
+           "touch $(@D)/{}".format(cuda_library_path("cufft"))
+         ]),
     ),
     local = 1,
 )
@@ -167,7 +173,7 @@ genrule(
     ],
     cmd = if_cuda(
         # Under cuda config, create the symbolic link to the actual cuda.config
-        "ln -sf `readlink -f third_party/gpus/cuda/cuda.config` $(@D)/;",
+        "ln -sf `{} -f third_party/gpus/cuda/cuda.config` $(@D)/;".format(readlink_command()),
 
         # Under non-cuda config, create the dummy file
         ";".join([

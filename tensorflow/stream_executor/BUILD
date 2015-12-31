@@ -1,6 +1,8 @@
 licenses(["restricted"])
 
-load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow/tensorflow", "if_cuda")
+load("//third_party/gpus/cuda/platform", "cuda_sdk_version")
+load("//third_party/gpus/cuda/platform", "cudnn_sdk_version")
 
 cc_library(
     name = "stream_executor",
@@ -38,4 +40,8 @@ cc_library(
         "//third_party/gpus/cuda:cuda_headers",
     ],
     alwayslink = 1,
+    defines = [
+        "CUDA_TOOLKIT_VERSION={}".format(cuda_sdk_version()),
+        "CUDNN_VERSION={}".format(cudnn_sdk_version())
+    ],
 )
