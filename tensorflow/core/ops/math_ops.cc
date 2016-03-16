@@ -191,7 +191,14 @@ Computes hyperbolic tangent of `x` element-wise.
 REGISTER_OP("Lgamma")
     .UNARY()
     .Doc(R"doc(
-Computes the log of the absolute value of Gamma of `x` element-wise.
+Computes the log of the absolute value of `Gamma(x)` element-wise.
+)doc");
+
+REGISTER_OP("Digamma")
+    .UNARY()
+    .Doc(R"doc(
+Computes Psi, the derivative of Lgamma (the log of the absolute value of
+`Gamma(x)`), element-wise.
 )doc");
 
 REGISTER_OP("Erf")
@@ -319,6 +326,13 @@ REGISTER_OP("Div")
     .BINARY_MORE()
     .Doc(R"doc(
 Returns x / y element-wise.
+)doc");
+
+REGISTER_OP("SquaredDifference")
+    .BINARY_FEWER()
+    .SetIsCommutative()
+    .Doc(R"doc(
+Returns (x - y)(x - y) element-wise.
 )doc");
 
 #undef BINARY_FEWER
@@ -1178,6 +1192,25 @@ Compute the inverse 2-dimensional discrete Fourier Transform.
 in: A complex64 matrix.
 out: The inverse 2D Fourier Transform of `in`.
 
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Cross")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Compute the pairwise cross product.
+
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+
+a: A tensor containing 3-element vectors.
+b: Another tensor, of same type and shape as `a`.
+product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
 }  // namespace tensorflow

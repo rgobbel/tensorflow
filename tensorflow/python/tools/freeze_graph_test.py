@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=g-bad-import-order,unused-import
 """Tests the graph freezing tool."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import os
+
 import tensorflow as tf
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 from tensorflow.python.tools import freeze_graph
 
 
@@ -69,7 +66,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
                               input_binary, input_checkpoint_path,
                               output_node_names, restore_op_name,
                               filename_tensor_name, output_graph_path,
-                              clear_devices)
+                              clear_devices, "")
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.

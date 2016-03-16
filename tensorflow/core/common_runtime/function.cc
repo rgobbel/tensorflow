@@ -279,7 +279,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
 
-  bool IsDefined(const string& function_name) override;
+  bool IsStateful(const string& function) override;
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
@@ -362,6 +362,7 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -406,6 +407,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
         ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
 
     FunctionLibraryRuntime::Options opts;
+    opts.step_id = ctx->step_id();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -460,13 +462,26 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
 
+  // TODO(zhifengc): For now, we assume int32 is always on host memory
+  // and other types are always on device memory. We should do type
+  // inference over function body to derive the correct input/output
+  // memory types.
+  MemoryTypeVector input_memory_types;
+  for (const auto& t : fbody->arg_types) {
+    input_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+  }
+  MemoryTypeVector output_memory_types;
+  for (const auto& t : fbody->ret_types) {
+    output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+  }
+
   // Constructs a CallOp kernel for running the instantiated function.
   Status s;
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
-      &fbody->fdef.signature(), this, fbody->arg_types, fbody->ret_types,
-      graph_def_version_, &s);
+      &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
+      fbody->ret_types, output_memory_types, graph_def_version_, &s);
   *kernel = new CallOp(handle, &construction);
   if (!s.ok()) {
     delete kernel;
@@ -658,6 +673,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return done(s);
   }
   Executor::Args exec_args;
+  // Inherit the step_id from the caller.
+  exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = runner_;
@@ -676,8 +693,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
       });
 }
 
-bool FunctionLibraryRuntimeImpl::IsDefined(const string& function_name) {
-  return lib_def_->Find(function_name) != nullptr;
+bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
+  Status s;
+  auto sig = lib_def_->LookUp(func, &s);
+  return s.ok() && sig->is_stateful();
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
@@ -729,7 +748,15 @@ namespace {
 const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
   const Edge* ret = nullptr;
   for (const Edge* e : edges) {
-    if (e->IsControlEdge() || ret) return nullptr;
+    if (e->IsControlEdge() || ret) {
+      // Don't touch it if there is a control edge.
+      return nullptr;
+    }
+    if (IsRefType(e->src()->output_type(e->src_output()))) {
+      // Don't touch it if the identity node is effectively de-reffing
+      // a ref.
+      return nullptr;
+    }
     ret = e;
   }
   return ret;
@@ -741,7 +768,7 @@ bool RemoveIdentityNodes(Graph* g) {
   bool removed_any = false;
   gtl::InlinedVector<Node*, 8> matches;
   for (Node* n : g->nodes()) {
-    if ((n->IsIdentity()) && GetTheOnlyDataEdge(n->in_edges())) {
+    if (n->IsIdentity() && GetTheOnlyDataEdge(n->in_edges())) {
       matches.push_back(n);
     }
   }
@@ -755,6 +782,7 @@ bool RemoveIdentityNodes(Graph* g) {
           g->AddEdge(in->src(), in->src_output(), out->dst(), out->dst_input());
         }
       }
+      VLOG(2) << "Remove Identity: " << n->DebugString();
       g->RemoveNode(n);
       removed_any = true;
     }

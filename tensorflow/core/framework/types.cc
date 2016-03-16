@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/register_types.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -63,6 +64,8 @@ string DataTypeString(DataType dtype) {
       return "string";
     case DT_COMPLEX64:
       return "complex64";
+    case DT_COMPLEX128:
+      return "complex128";
     case DT_INT64:
       return "int64";
     case DT_BOOL:
@@ -124,6 +127,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "complex64") {
     *dt = DT_COMPLEX64;
     return true;
+  } else if (sp == "complex128") {
+    *dt = DT_COMPLEX128;
+    return true;
   } else if (sp == "int64") {
     *dt = DT_INT64;
     return true;
@@ -164,9 +170,10 @@ string DataTypeSliceString(const DataTypeSlice types) {
 }
 
 DataTypeVector AllTypes() {
-  return {DT_FLOAT,  DT_DOUBLE, DT_INT32,     DT_UINT8, DT_INT16, DT_UINT16,
-          DT_INT8,   DT_STRING, DT_COMPLEX64, DT_INT64, DT_BOOL,  DT_QINT8,
-          DT_QUINT8, DT_QINT16, DT_QUINT16,   DT_QINT32};
+  return {DT_FLOAT,  DT_DOUBLE, DT_INT32,   DT_UINT8,     DT_INT16,
+          DT_UINT16, DT_INT8,   DT_STRING,  DT_COMPLEX64, DT_COMPLEX128,
+          DT_INT64,  DT_BOOL,   DT_QINT8,   DT_QUINT8,    DT_QINT16,
+          DT_QUINT16, DT_QINT32};
 }
 
 #if !defined(__ANDROID__)
@@ -187,8 +194,9 @@ DataTypeVector RealAndQuantizedTypes() {
 }
 
 DataTypeVector NumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT64,     DT_INT32, DT_UINT8,  DT_UINT16,
-          DT_INT16, DT_INT8,   DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32};
+  return {DT_FLOAT,  DT_DOUBLE, DT_INT64, DT_INT32,     DT_UINT8,
+          DT_UINT16, DT_INT16,  DT_INT8,  DT_COMPLEX64, DT_COMPLEX128,
+          DT_QINT8,  DT_QUINT8, DT_QINT32 };
 }
 
 #else  // defined(__ANDROID__)
@@ -222,6 +230,7 @@ bool DataTypeCanUseMemcpy(DataType dt) {
     case DT_INT16:
     case DT_INT8:
     case DT_COMPLEX64:
+    case DT_COMPLEX128:
     case DT_INT64:
     case DT_BOOL:
     case DT_QINT8:
@@ -247,6 +256,18 @@ bool DataTypeIsQuantized(DataType dt) {
     default:
       return false;
   }
+}
+
+int DataTypeSize(DataType dt) {
+#define CASE(T)                  \
+  case DataTypeToEnum<T>::value: \
+    return sizeof(T);
+  switch (dt) {
+    TF_CALL_POD_TYPES(CASE);
+    default:
+      return 0;
+  }
+#undef CASE
 }
 
 }  // namespace tensorflow

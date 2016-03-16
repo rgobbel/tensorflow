@@ -13,11 +13,25 @@
 # limitations under the License.
 # ==============================================================================
 
-"""DType functions."""
+"""Tensor utility functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework.ops import Tensor
+
+
+__all__ = ['assert_same_float_dtype', 'is_numeric_tensor', 'assert_scalar_int']
+
+
+NUMERIC_TYPES = frozenset([dtypes.float32, dtypes.float64, dtypes.int8,
+                           dtypes.int16, dtypes.int32, dtypes.int64,
+                           dtypes.uint8, dtypes.qint8, dtypes.qint32,
+                           dtypes.quint8, dtypes.complex64])
+
+
+def is_numeric_tensor(tensor):
+  return isinstance(tensor, Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
 def _assert_same_base_type(items, expected_type=None):
@@ -37,16 +51,16 @@ def _assert_same_base_type(items, expected_type=None):
   """
   original_item_str = None
   for item in items:
-    if item:
+    if item is not None:
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
-        original_item_str = item.name if hasattr(item, "name") else str(item)
+        original_item_str = item.name if hasattr(item, 'name') else str(item)
       elif expected_type != item_type:
-        raise ValueError("%s, type=%s, must be of the same type (%s)%s." % (
-            item.name if hasattr(item, "name") else str(item),
+        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+            item.name if hasattr(item, 'name') else str(item),
             item_type, expected_type,
-            (" as %s" % original_item_str) if original_item_str else ""))
+            (' as %s' % original_item_str) if original_item_str else ''))
   return expected_type
 
 
@@ -74,5 +88,24 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   if not dtype:
     dtype = dtypes.float32
   elif not dtype.is_floating:
-    raise ValueError("Expected float, got %s." % dtype)
+    raise ValueError('Expected float, got %s.' % dtype)
   return dtype
+
+
+def assert_scalar_int(tensor):
+  """Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
+
+  Args:
+    tensor: Tensor to test.
+  Returns:
+    `tensor`, for chaining.
+  Raises:
+    ValueError: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
+  """
+  data_type = tensor.dtype
+  if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
+    raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
+  shape = tensor.get_shape()
+  if shape.ndims != 0:
+    raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
+  return tensor

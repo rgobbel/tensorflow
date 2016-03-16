@@ -25,7 +25,6 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <numeric>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -122,10 +121,7 @@ class SparseToDense : public OpKernel {
                             order);
 
     if (validate_indices_) {
-      OP_REQUIRES(c, st.IndicesValid(),
-                  errors::InvalidArgument("Indices are not valid: not "
-                                          "lexicographically sorted or "
-                                          "containing repeats."));
+      OP_REQUIRES_OK(c, st.IndicesValid());
     }
 
     output->flat<T>().setConstant(default_value.scalar<T>()());

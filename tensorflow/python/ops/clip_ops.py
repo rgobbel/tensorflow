@@ -127,7 +127,7 @@ def global_norm(t_list, name=None):
         if t is not None else t
         for i, t in enumerate(t_list)]
     squared_norms = array_ops.pack(
-        [math_ops.reduce_sum(v * v) for v in values if v])
+        [math_ops.reduce_sum(v * v) for v in values if v is not None])
 
     norm = math_ops.sqrt(
         math_ops.reduce_sum(squared_norms), name="global_norm")
@@ -157,8 +157,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   Any of the entries of `t_list` that are of type `None` are ignored.
 
   This is the correct way to perform gradient clipping (for example, see
-  R. Pascanu, T. Mikolov, and Y. Bengio, "On the difficulty of training
-  Recurrent Neural Networks".  http://arxiv.org/abs/1211.5063)
+  [Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
+  ([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.

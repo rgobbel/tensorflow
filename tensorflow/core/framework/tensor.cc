@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
@@ -60,6 +61,7 @@ class Buffer : public TensorBuffer {
     int64 rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(alloc_->Name());
+    proto->set_ptr(reinterpret_cast<uintptr_t>(data_));
     if (alloc_->TracksAllocationSizes()) {
       int64 ab = alloc_->AllocatedSize(data_);
       proto->set_allocated_bytes(ab);
@@ -214,6 +216,22 @@ struct ProtoHelper<complex64> {
 };
 
 template <>
+struct ProtoHelper<complex128> {
+  typedef Helper<double>::RepeatedFieldType FieldType;
+  static const complex128* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const complex128*>(proto.dcomplex_val().data());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.dcomplex_val().size() / 2;
+  }
+  static void Fill(const complex128* data, size_t n, TensorProto* proto) {
+    const double* p = reinterpret_cast<const double*>(data);
+    FieldType copy(p, p + n * 2);
+    proto->mutable_dcomplex_val()->Swap(&copy);
+  }
+};
+
+template <>
 struct ProtoHelper<qint32> {
   typedef Helper<int32>::RepeatedFieldType FieldType;
   static const qint32* Begin(const TensorProto& proto) {
@@ -257,6 +275,10 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 
 template <typename T>
 Buffer<T>::~Buffer() {
+  if (LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorDeallocation(alloc_->AllocationId(data_),
+                                        alloc_->Name());
+  }
   alloc_->Deallocate<T>(data_, elem_);
 }
 
@@ -313,15 +335,16 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : type_(type), shape_({0}), buf_(nullptr) {}
+Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
 
-Tensor::Tensor(const Tensor& other)
-    : type_(other.dtype()), shape_(other.shape()), buf_(other.buf_) {
+Tensor::Tensor(const Tensor& other) : shape_(other.shape()), buf_(other.buf_) {
+  set_dtype(other.dtype());
   RefIfNonNull(buf_);
 }
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
-    : type_(type), shape_(shape), buf_(buf) {
+    : shape_(shape), buf_(buf) {
+  set_dtype(type);
   RefIfNonNull(buf);
 }
 
@@ -333,7 +356,23 @@ Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   CHECK_EQ(shape.num_elements(), other.NumElements());
-  type_ = other.dtype();
+  shape_ = shape;
+  set_dtype(other.dtype());
+  if (buf_ != other.buf_) {
+    UnrefIfNonNull(buf_);
+    buf_ = other.buf_;
+    RefIfNonNull(buf_);
+  }
+}
+
+void Tensor::UnsafeCopyFromInternal(const Tensor& other,
+                                    const TensorShape& shape) {
+  int in_size = DataTypeSize(other.dtype());
+  int out_size = DataTypeSize(shape.data_type());
+  CHECK_NE(in_size, 0);
+  CHECK_NE(out_size, 0);
+  CHECK_EQ(shape.num_elements() * out_size,
+           other.shape().num_elements() * in_size);
   shape_ = shape;
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
@@ -362,6 +401,7 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
     CASE(int8, SINGLE_ARG(STMTS))                     \
     CASE(string, SINGLE_ARG(STMTS))                   \
     CASE(complex64, SINGLE_ARG(STMTS))                \
+    CASE(complex128, SINGLE_ARG(STMTS))               \
     CASE(int64, SINGLE_ARG(STMTS))                    \
     CASE(bool, SINGLE_ARG(STMTS))                     \
     CASE(qint32, SINGLE_ARG(STMTS))                   \
@@ -379,19 +419,30 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
+  }
+  if (IsInitialized() && LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
+                                      *this);
   }
 }
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
                const AllocationAttributes& allocation_attr)
-    : type_(type), shape_(shape), buf_(nullptr) {
+    : shape_(shape), buf_(nullptr) {
+  set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0) {
+  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
+  }
+  if (!allocation_attr.allocation_will_be_logged && IsInitialized() &&
+      LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown (with attributes)",
+                                      LogMemory::UNKNOWN_STEP_ID, *this);
   }
 }
 
@@ -441,8 +492,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     return *this;
   }
   Tensor ret;
-  ret.type_ = type_;
   ret.shape_ = shape_;
+  ret.set_dtype(dtype());
   ret.buf_ = nullptr;
   if (dim0_size > 0) {
     const int64 elems_per_dim0 = NumElements() / dim0_size;
@@ -451,7 +502,8 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
     ret.shape_.set_dim(0, dim0_size);
     const int64 num_elems = dim0_size * elems_per_dim0;
     if (buf_) {
-      CASES(type_, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
+      DataType dt = dtype();
+      CASES(dt, ret.buf_ = new SubBuffer<T>(buf_, delta, num_elems));
     }
   }
   return ret;
@@ -477,17 +529,22 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
     }
     if (p == nullptr) return false;
   }
-  type_ = proto.dtype();
   shape_ = shape;
+  set_dtype(proto.dtype());
   UnrefIfNonNull(buf_);
   buf_ = p;
+  // TODO(misard) add tracking of which kernels and steps are calling FromProto.
+  if (IsInitialized() && LogMemory::IsEnabled()) {
+    LogMemory::RecordTensorAllocation("Unknown (from Proto)",
+                                      LogMemory::UNKNOWN_STEP_ID, *this);
+  }
   return true;
 }
 
 void Tensor::AsProtoField(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
+  proto->set_dtype(dtype());
   if (buf_) {
     CASES(dtype(), ToProtoField<T>(*buf_, shape_.num_elements(), proto));
   }
@@ -495,7 +552,7 @@ void Tensor::AsProtoField(TensorProto* proto) const {
 
 void Tensor::AsProtoTensorContent(TensorProto* proto) const {
   proto->Clear();
-  proto->set_dtype(type_);
+  proto->set_dtype(dtype());
   shape_.AsProto(proto->mutable_tensor_shape());
   if (buf_) {
     CASES(dtype(), Helper<T>::Encode(buf_, shape_.num_elements(),
@@ -520,6 +577,8 @@ bool Tensor::CanUseDMA() const {
 
 string Tensor::SummarizeValue(int64 max_entries) const {
   string ret;
+  // TODO(irving): Don't call NumElements and flat every time around this
+  // loop.
   for (int64 i = 0; i < std::min(max_entries, NumElements()); ++i) {
     if (i > 0) strings::StrAppend(&ret, " ");
     switch (dtype()) {

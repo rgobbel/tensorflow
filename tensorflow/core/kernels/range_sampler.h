@@ -65,7 +65,7 @@ class RangeSampler {
   // Expected counts for the elements of the returned "batch" are reported
   // in the aligned array "batch_expected_count".
   //
-  // The user can optionally provide "extras", containg values in the range.
+  // The user can optionally provide "extras", containing values in the range.
   // The expected counts for the extras are reported in the aligned array
   // "extras_expected_count".
   //
@@ -128,9 +128,6 @@ class AllSampler : public RangeSampler {
       gtl::ArraySlice<int64> extras,
       gtl::MutableArraySlice<float> extras_expected_count,
       gtl::ArraySlice<int64> avoided_values) const override;
-
- private:
-  const float inv_range_;
 };
 
 class UniformSampler : public RangeSampler {
@@ -188,7 +185,7 @@ class UnigramSampler : public RangeSampler {
 
   float Probability(int64 value) const override;
 
-  // Overriding at a high level results in far fewer lock aquisitions.
+  // Overriding at a high level results in far fewer lock acquisitions.
   void SampleBatchGetExpectedCountAvoid(
       random::SimplePhilox* rnd, bool unique,
       gtl::MutableArraySlice<int64> batch,

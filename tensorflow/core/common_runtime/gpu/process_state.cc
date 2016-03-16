@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_region_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -35,22 +37,11 @@ limitations under the License.
 // CUDA driver.
 const bool FLAGS_brain_mem_reg_cuda_dma = true;
 
-// If true, checks for memory overwrites by writing
-// distinctive patterns on both ends of allocated memory.
-const bool FLAGS_brain_gpu_region_allocator_debug = false;
-
-// If true, initializes all new Malloc buffers to NaN, and resets the
-// buffer to NaN upon Free.
-const bool FLAGS_brain_gpu_region_allocator_reset_to_nan = false;
-
-// If true, uses the Best-Fit GPU allocator.
-const bool FLAGS_brain_gpu_use_bfc_allocator = true;
-
 // If true, record attributes of memory allocations and
 // dynamically check for appropriate use of registered memory.
 // Should only be true for debugging or diagnosis of
 // performance issues.
-bool FLAGS_brain_gpu_record_mem_types = false;
+const bool FLAGS_brain_gpu_record_mem_types = false;
 
 namespace gpu = ::perftools::gputools;
 
@@ -66,7 +57,7 @@ ProcessState* ProcessState::instance_ = nullptr;
   return instance_;
 }
 
-ProcessState::ProcessState() : gpu_count_(0) {
+ProcessState::ProcessState() : gpu_device_enabled_(false) {
   CHECK(instance_ == nullptr);
   instance_ = this;
 }
@@ -93,18 +84,10 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
   return MemDesc();
 }
 
-void ProcessState::SetGPUCount(int c) {
-  CHECK(gpu_count_ == 0 || gpu_count_ == c)
-      << "Cannot call SetGPUCount with a non-zero value "
-      << "not equal to prior set value.";
-  gpu_count_ = c;
-}
-
-int ProcessState::GPUCount() const { return gpu_count_; }
-
-Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
-                                         const string& allocator_type) {
+Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
+                                         size_t total_bytes) {
 #if GOOGLE_CUDA
+  const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
   gpu::Platform* gpu_platform = GPUMachineManager();
 
@@ -126,19 +109,15 @@ Allocator* ProcessState::GetGPUAllocator(int gpu_id, size_t total_bytes,
       return nullptr;
     }
 
-    if (FLAGS_brain_gpu_use_bfc_allocator || allocator_type == "BFC") {
-      gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes);
-    } else {
-      gpu_allocator = new GPURegionAllocator(gpu_id, total_bytes);
-    }
+    gpu_allocator = new GPUBFCAllocator(gpu_id, total_bytes, options);
 
-    if (FLAGS_brain_gpu_region_allocator_debug) {
+    // If true, checks for memory overwrites by writing
+    // distinctive patterns on both ends of allocated memory.
+    static const bool kGPUDebug = false;
+    if (kGPUDebug) {
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, gpu_id);
-    }
-    if (FLAGS_brain_gpu_region_allocator_reset_to_nan) {
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, gpu_id);
     }
-
     gpu_allocators_[gpu_id] = gpu_allocator;
 
     // If there are any pending AllocVisitors for this bus, add
@@ -179,15 +158,21 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
-    cpu_allocators_.push_back(new PoolAllocator(
-        100 /*pool_size_limit*/, true /*auto_resize*/, new BasicCPUAllocator(),
-        new NoopRounder, "cpu_pool"));
+    Allocator* allocator =
+        new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
+                          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+    if (LogMemory::IsEnabled()) {
+      // Wrap the allocator to track allocation ids for better logging
+      // at the cost of performance.
+      allocator = new TrackingAllocator(allocator, true);
+    }
+    cpu_allocators_.push_back(allocator);
   }
   return cpu_allocators_[0];
 }
 
 Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
-  if (gpu_count_ == 0 || !FLAGS_brain_mem_reg_cuda_dma) {
+  if (!HasGPUDevice() || !FLAGS_brain_mem_reg_cuda_dma) {
     return GetCPUAllocator(numa_node);
   }
   // Although we're temporarily ignoring numa_node, check for legality.
@@ -202,9 +187,15 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
     gpu::Platform* gpu_platform = GPUMachineManager();
     gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
     CHECK(se);
-    cuda_host_allocators_.push_back(new PoolAllocator(
+    Allocator* allocator = new PoolAllocator(
         100 /*pool_size_limit*/, true /*auto_resize*/,
-        new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host"));
+        new CUDAHostAllocator(se), new Pow2Rounder, "cuda_host");
+    if (LogMemory::IsEnabled()) {
+      // Wrap the allocator to track allocation ids for better logging
+      // at the cost of performance.
+      allocator = new TrackingAllocator(allocator, true);
+    }
+    cuda_host_allocators_.push_back(allocator);
     if (FLAGS_brain_gpu_record_mem_types) {
       MemDesc md;
       md.loc = MemDesc::CPU;

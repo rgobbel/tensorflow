@@ -75,8 +75,12 @@ class EigenAllocator : public ::Eigen::Allocator {
  public:
   EigenAllocator() {}
 
-  void Reinitialize(gpu::Stream* stream, ::tensorflow::Allocator* alloc,
-                    EventMgr* em) {
+  void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
+                    ::tensorflow::Allocator* alloc, EventMgr* em) {
+    if (LogMemory::IsEnabled()) {
+      operation_ = context->op_kernel().name() + "/EigenAllocator";
+      step_id_ = context->step_id();
+    }
     stream_ = stream;
     allocator_ = alloc;
     em_ = em;
@@ -90,14 +94,24 @@ class EigenAllocator : public ::Eigen::Allocator {
       LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
                  << num_bytes << ". See error logs for more detailed info.";
     }
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
+                                     allocator_);
+    }
     return ret;
   }
 
   void deallocate(void* buffer) const override {
-    em_->ThenDeleteBuffer(stream_, {allocator_, buffer});
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawDeallocation(operation_, step_id_, buffer, allocator_,
+                                       true);
+    }
+    em_->ThenDeleteBuffer(stream_, {allocator_, buffer, operation_, step_id_});
   }
 
  private:
+  string operation_;
+  int64 step_id_;
   gpu::Stream* stream_;                 // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
   ::tensorflow::EventMgr* em_;          // Not owned.
@@ -110,8 +124,12 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
   EigenCudaStreamDevice() { Eigen::initializeDeviceProp(); }
 
-  void Reinitialize(const cudaStream_t* cuda_stream, int gpu_id,
-                    ::tensorflow::Allocator* alloc) {
+  void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
+                    int gpu_id, ::tensorflow::Allocator* alloc) {
+    if (LogMemory::IsEnabled()) {
+      operation_ = context->op_kernel().name() + "/EigenAllocator";
+      step_id_ = context->step_id();
+    }
     stream_ = cuda_stream;
     allocator_ = alloc;
     device_prop_ = &Eigen::m_deviceProperties[gpu_id];
@@ -128,30 +146,47 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
       LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
                  << num_bytes << ". See error logs for more detailed info.";
     }
-
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
+                                     allocator_);
+    }
     return ret;
   }
   void deallocate(void* buffer) const override {
-    AsyncFreeData* afData = new AsyncFreeData(allocator_, buffer);
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawDeallocation(operation_, step_id_, buffer, allocator_,
+                                       true);
+    }
+    AsyncFreeData* afData =
+        new AsyncFreeData(allocator_, buffer, operation_, step_id_);
     cudaError_t err = cudaStreamAddCallback(*stream_, asyncFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
   }
 
  private:
   struct AsyncFreeData {
-    AsyncFreeData(::tensorflow::Allocator* a, void* p)
-        : allocator_(a), address_(p) {}
+    AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
+                  const int64 s)
+        : allocator_(a), address_(p), operation_(o), step_id_(s) {}
     ::tensorflow::Allocator* allocator_;
     void* address_;
+    const string operation_;
+    const int64 step_id_;
   };
 
   static void CUDART_CB asyncFree(cudaStream_t stream, cudaError_t status,
                                   void* userData) {
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
+    if (LogMemory::IsEnabled()) {
+      LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
+                                       data->address_, data->allocator_, false);
+    }
     data->allocator_->DeallocateRaw(data->address_);
     delete data;
   }
 
+  string operation_;
+  int64 step_id_;
   const cudaStream_t* stream_;          // Not owned.
   const cudaDeviceProp* device_prop_;   // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
@@ -174,6 +209,8 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
       sync_every_op_(sync_every_op) {
+  ProcessState::singleton()->EnableGPUDevice();
+
   gpu::StreamExecutor* executor =
       GPUMachineManager()->ExecutorForDevice(gpu_id_).ValueOrDie();
   if (!executor) {
@@ -192,17 +229,27 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
     stream->Init();
     VLOG(2) << "Created stream[" << i << "] = " << stream;
 
-    auto copy_in_stream = new gpu::Stream(executor);
-    copy_in_stream->Init();
-    VLOG(2) << "Created copy_in_stream[" << i << "] = " << copy_in_stream;
+    auto host_to_device_stream = new gpu::Stream(executor);
+    host_to_device_stream->Init();
+    VLOG(2) << "Created host_to_device_stream[" << i
+            << "] = " << host_to_device_stream;
 
-    auto copy_out_stream = new gpu::Stream(executor);
-    copy_out_stream->Init();
-    VLOG(2) << "Created copy_out_stream[" << i << "] = " << copy_out_stream;
-    streams_.push_back({stream, copy_in_stream, copy_out_stream});
+    auto device_to_host_stream = new gpu::Stream(executor);
+    device_to_host_stream->Init();
+    VLOG(2) << "Created device_to_host_stream[" << i
+            << "] = " << device_to_host_stream;
+
+    auto device_to_device_stream = new gpu::Stream(executor);
+    device_to_device_stream->Init();
+    VLOG(2) << "Created device_to_device_stream[" << i
+            << "] = " << device_to_device_stream;
+
+    streams_.push_back({stream, host_to_device_stream, device_to_host_stream,
+                        device_to_device_stream});
 
     device_contexts_.push_back(
-        new GPUDeviceContext(i, stream, copy_in_stream, copy_out_stream));
+        new GPUDeviceContext(i, stream, host_to_device_stream,
+                             device_to_host_stream, device_to_device_stream));
   }
   gpu_device_info_ = new GpuDeviceInfo;
   gpu_device_info_->stream = streams_[0].compute;
@@ -216,8 +263,9 @@ BaseGPUDevice::~BaseGPUDevice() {
   for (auto ctx : device_contexts_) ctx->Unref();
   for (auto& stream_group : streams_) {
     delete stream_group.compute;
-    delete stream_group.copy_in;
-    delete stream_group.copy_out;
+    delete stream_group.host_to_device;
+    delete stream_group.device_to_host;
+    delete stream_group.device_to_device;
   }
 }
 
@@ -360,7 +408,9 @@ void BaseGPUDevice::ConsumeListOfAccessedTensors(
   em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
-Status BaseGPUDevice::Sync() { return GPUUtil::Sync(this); }
+// Based on the semantics of Device::Sync this call should wait for
+// all streams not just the current one.
+Status BaseGPUDevice::Sync() { return GPUUtil::SyncAll(this); }
 
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                  OpKernelContext* context,
@@ -419,9 +469,10 @@ namespace {
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
-  void Reinitialize(gpu::Stream* stream, Allocator* base_allocator,
-                    ::tensorflow::EventMgr* em) {
-    allocator_.Reinitialize(stream, base_allocator, em);
+  ConcretePerOpGpuDevice() : device_(nullptr) {}
+  void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
+                    Allocator* base_allocator, ::tensorflow::EventMgr* em) {
+    allocator_.Reinitialize(context, stream, base_allocator, em);
     device_.Reinitialize(stream, &allocator_);
   }
 
@@ -436,9 +487,9 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice() : device_(&stream_device_) {}
 
-  void Reinitialize(const cudaStream_t* cuda_stream, int gpu_id,
-                    Allocator* base_allocator) {
-    stream_device_.Reinitialize(cuda_stream, gpu_id, base_allocator);
+  void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
+                    int gpu_id, Allocator* base_allocator) {
+    stream_device_.Reinitialize(context, cuda_stream, gpu_id, base_allocator);
   }
 
   const Eigen::GpuDevice& device() const override { return device_; }
@@ -450,18 +501,19 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
 #endif
 }  // namespace
 
-void BaseGPUDevice::ReinitializeDevice(PerOpGpuDevice* device, int stream_id,
+void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
+                                       PerOpGpuDevice* device, int stream_id,
                                        Allocator* allocator) {
   ConcretePerOpGpuDevice* concrete_device =
       dynamic_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
-  concrete_device->Reinitialize(streams_[stream_id].compute, allocator,
+  concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
                                 em_.get());
 #else
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
       streams_[stream_id].compute->implementation()->CudaStreamMemberHack());
-  concrete_device->Reinitialize(cuda_stream, gpu_id_, allocator);
+  concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator);
 #endif
 }
 
@@ -469,7 +521,8 @@ PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
   return new ConcretePerOpGpuDevice();
 }
 
-void BaseGPUDevice::ReinitializeGpuDevice(PerOpGpuDevice* device,
+void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
+                                          PerOpGpuDevice* device,
                                           DeviceContext* dc,
                                           Allocator* allocator) {
   if (dc) {
@@ -478,9 +531,9 @@ void BaseGPUDevice::ReinitializeGpuDevice(PerOpGpuDevice* device,
     VLOG(1) << "  eigen_gpu_device(" << dc << ") => stream[" << stream_id
             << "]";
     CHECK_LT(stream_id, streams_.size());
-    ReinitializeDevice(device, stream_id, allocator);
+    ReinitializeDevice(context, device, stream_id, allocator);
   } else {
-    ReinitializeDevice(device, 0, allocator);
+    ReinitializeDevice(context, device, 0, allocator);
   }
 }
 
@@ -574,12 +627,12 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
           << " numa: " << desc.numa_node() << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
-  return CreateGPUDevice(options, name, allocated_bytes, bus_adjacency, gpu_id,
-                         GetShortDeviceDescription(gpu_id, desc),
-                         process_state->GetGPUAllocator(
-                             gpu_id, allocated_memory,
-                             options.config.gpu_options().allocator_type()),
-                         process_state->GetCPUAllocator(desc.numa_node()));
+  return CreateGPUDevice(
+      options, name, allocated_bytes, bus_adjacency, gpu_id,
+      GetShortDeviceDescription(gpu_id, desc),
+      process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
+                                     allocated_memory),
+      process_state->GetCPUAllocator(desc.numa_node()));
 }
 
 static int GetMinGPUMultiprocessorCount() {
@@ -614,9 +667,9 @@ struct CudaVersion {
     size_t dot_pos = version_name.find('.');
     CHECK(dot_pos != string::npos);
     string major_str = version_name.substr(0, dot_pos);
-    CHECK(strings::safe_strto32(major_str.c_str(), &major_part));
+    CHECK(strings::safe_strto32(major_str, &major_part));
     string minor_str = version_name.substr(dot_pos + 1);
-    CHECK(strings::safe_strto32(minor_str.c_str(), &minor_part));
+    CHECK(strings::safe_strto32(minor_str, &minor_part));
   }
   CudaVersion() {}
   bool operator<(const CudaVersion& other) const {

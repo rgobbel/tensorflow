@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -34,6 +32,7 @@ class DType(object):
   * `tf.float64`: 64-bit double-precision floating-point.
   * `tf.bfloat16`: 16-bit truncated floating-point.
   * `tf.complex64`: 64-bit single-precision complex.
+  * `tf.complex128`: 128-bit double-precision complex.
 
   * `tf.int8`: 8-bit signed integer.
   * `tf.uint8`: 8-bit unsigned integer.
@@ -61,9 +60,11 @@ class DType(object):
   @@is_compatible_with
   @@name
   @@base_dtype
+  @@real_dtype
   @@is_ref_dtype
   @@as_ref
   @@is_floating
+  @@is_complex
   @@is_integer
   @@is_quantized
   @@is_unsigned
@@ -117,6 +118,17 @@ class DType(object):
       return self
 
   @property
+  def real_dtype(self):
+    """Returns the dtype correspond to this dtype's real part."""
+    base = self.base_dtype
+    if base == complex64:
+      return float32
+    elif base == complex128:
+      return float64
+    else:
+      return self
+
+  @property
   def as_numpy_dtype(self):
     """Returns a `numpy.dtype` based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
@@ -136,6 +148,11 @@ class DType(object):
   def is_floating(self):
     """Returns whether this is a (real) floating point type."""
     return issubclass(self.as_numpy_dtype, np.floating)
+
+  @property
+  def is_complex(self):
+    """Returns whether this is a complex floating point type."""
+    return self.base_dtype in (complex64, complex128)
 
   @property
   def is_quantized(self):
@@ -165,8 +182,8 @@ class DType(object):
       TypeError: if this is a non-numeric, unordered, or quantized type.
 
     """
-    if (self.is_quantized or self.base_dtype == bool or
-        self.base_dtype == string or self.base_dtype == complex64):
+    if (self.is_quantized or self.base_dtype in
+        (bool, string, complex64, complex128)):
       raise TypeError("Cannot find minimum value of %s." % self)
 
     # there is no simple way to get the min value of a dtype, we have to check
@@ -187,8 +204,8 @@ class DType(object):
       TypeError: if this is a non-numeric, unordered, or quantized type.
 
     """
-    if (self.is_quantized or self.base_dtype == bool or
-        self.base_dtype == string or self.base_dtype == complex64):
+    if (self.is_quantized or self.base_dtype in
+        (bool, string, complex64, complex128)):
       raise TypeError("Cannot find maximum value of %s." % self)
 
     # there is no simple way to get the min value of a dtype, we have to check
@@ -247,6 +264,10 @@ class DType(object):
   def __hash__(self):
     return self._type_enum
 
+  @property
+  def size(self):
+    return np.dtype(self.as_numpy_dtype).itemsize
+
 
 # Define standard wrappers for the types_pb2.DataType enum.
 float32 = DType(types_pb2.DT_FLOAT)
@@ -259,6 +280,7 @@ int16 = DType(types_pb2.DT_INT16)
 int8 = DType(types_pb2.DT_INT8)
 string = DType(types_pb2.DT_STRING)
 complex64 = DType(types_pb2.DT_COMPLEX64)
+complex128 = DType(types_pb2.DT_COMPLEX128)
 int64 = DType(types_pb2.DT_INT64)
 bool = DType(types_pb2.DT_BOOL)
 qint8 = DType(types_pb2.DT_QINT8)
@@ -277,6 +299,7 @@ int16_ref = DType(types_pb2.DT_INT16_REF)
 int8_ref = DType(types_pb2.DT_INT8_REF)
 string_ref = DType(types_pb2.DT_STRING_REF)
 complex64_ref = DType(types_pb2.DT_COMPLEX64_REF)
+complex128_ref = DType(types_pb2.DT_COMPLEX128_REF)
 int64_ref = DType(types_pb2.DT_INT64_REF)
 bool_ref = DType(types_pb2.DT_BOOL_REF)
 qint8_ref = DType(types_pb2.DT_QINT8_REF)
@@ -299,6 +322,7 @@ _INTERN_TABLE = {
     types_pb2.DT_INT8: int8,
     types_pb2.DT_STRING: string,
     types_pb2.DT_COMPLEX64: complex64,
+    types_pb2.DT_COMPLEX128: complex128,
     types_pb2.DT_INT64: int64,
     types_pb2.DT_BOOL: bool,
     types_pb2.DT_QINT8: qint8,
@@ -316,6 +340,7 @@ _INTERN_TABLE = {
     types_pb2.DT_INT8_REF: int8_ref,
     types_pb2.DT_STRING_REF: string_ref,
     types_pb2.DT_COMPLEX64_REF: complex64_ref,
+    types_pb2.DT_COMPLEX128_REF: complex128_ref,
     types_pb2.DT_INT64_REF: int64_ref,
     types_pb2.DT_BOOL_REF: bool_ref,
     types_pb2.DT_QINT8_REF: qint8_ref,
@@ -338,6 +363,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_INT8: "int8",
     types_pb2.DT_STRING: "string",
     types_pb2.DT_COMPLEX64: "complex64",
+    types_pb2.DT_COMPLEX128: "complex128",
     types_pb2.DT_INT64: "int64",
     types_pb2.DT_BOOL: "bool",
     types_pb2.DT_QINT8: "qint8",
@@ -355,6 +381,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_INT8_REF: "int8_ref",
     types_pb2.DT_STRING_REF: "string_ref",
     types_pb2.DT_COMPLEX64_REF: "complex64_ref",
+    types_pb2.DT_COMPLEX128_REF: "complex128_ref",
     types_pb2.DT_INT64_REF: "int64_ref",
     types_pb2.DT_BOOL_REF: "bool_ref",
     types_pb2.DT_QINT8_REF: "qint8_ref",
@@ -396,6 +423,7 @@ _NP_TO_TF = frozenset([
     (np.int16, int16),
     (np.int8, int8),
     (np.complex64, complex64),
+    (np.complex128, complex128),
     (np.object, string),
     (np.bool, bool),
     (_np_qint8, qint8),
@@ -417,6 +445,7 @@ _TF_TO_NP = {
     # strings.
     types_pb2.DT_STRING: np.object,
     types_pb2.DT_COMPLEX64: np.complex64,
+    types_pb2.DT_COMPLEX128: np.complex128,
     types_pb2.DT_INT64: np.int64,
     types_pb2.DT_BOOL: np.bool,
     types_pb2.DT_QINT8: _np_qint8,
@@ -436,6 +465,7 @@ _TF_TO_NP = {
     types_pb2.DT_INT8_REF: np.int8,
     types_pb2.DT_STRING_REF: np.object,
     types_pb2.DT_COMPLEX64_REF: np.complex64,
+    types_pb2.DT_COMPLEX128_REF: np.complex128,
     types_pb2.DT_INT64_REF: np.int64,
     types_pb2.DT_BOOL_REF: np.bool,
     types_pb2.DT_QINT8_REF: _np_qint8,

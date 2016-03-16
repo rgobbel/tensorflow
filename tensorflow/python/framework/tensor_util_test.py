@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -276,7 +274,7 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.object, a.dtype)
     self.assertAllEqual(np.array([[b"a", b"ab"], [b"abc", b"abcd"]]), a)
 
-  def testComplex(self):
+  def testComplex64(self):
     t = tensor_util.make_tensor_proto((1+2j), dtype=tf.complex64)
     self.assertProtoEquals("""
       dtype: DT_COMPLEX64
@@ -288,16 +286,30 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.complex64, a.dtype)
     self.assertAllEqual(np.array(1 + 2j), a)
 
-  def testComplexWithImplicitRepeat(self):
-    t = tensor_util.make_tensor_proto((1+1j), shape=[3, 4],
-                                      dtype=tf.complex64)
+  def testComplex128(self):
+    t = tensor_util.make_tensor_proto((1+2j), dtype=tf.complex128)
+    self.assertProtoEquals("""
+      dtype: DT_COMPLEX128
+      tensor_shape {}
+      dcomplex_val: 1
+      dcomplex_val: 2
+      """, t)
     a = tensor_util.MakeNdarray(t)
-    self.assertAllClose(np.array([[(1+1j), (1+1j), (1+1j), (1+1j)],
-                                  [(1+1j), (1+1j), (1+1j), (1+1j)],
-                                  [(1+1j), (1+1j), (1+1j), (1+1j)]],
-                                 dtype=np.complex64), a)
+    self.assertEquals(np.complex128, a.dtype)
+    self.assertAllEqual(np.array(1 + 2j), a)
 
-  def testComplexN(self):
+  def testComplexWithImplicitRepeat(self):
+    for dtype, np_dtype in [(tf.complex64, np.complex64),
+                            (tf.complex128, np.complex128)]:
+      t = tensor_util.make_tensor_proto((1+1j), shape=[3, 4],
+                                        dtype=dtype)
+      a = tensor_util.MakeNdarray(t)
+      self.assertAllClose(np.array([[(1+1j), (1+1j), (1+1j), (1+1j)],
+                                    [(1+1j), (1+1j), (1+1j), (1+1j)],
+                                    [(1+1j), (1+1j), (1+1j), (1+1j)]],
+                                   dtype=np_dtype), a)
+
+  def testComplex64N(self):
     t = tensor_util.make_tensor_proto([(1+2j), (3+4j), (5+6j)], shape=[1, 3],
                                       dtype=tf.complex64)
     self.assertProtoEquals("""
@@ -314,7 +326,24 @@ class TensorUtilTest(tf.test.TestCase):
     self.assertEquals(np.complex64, a.dtype)
     self.assertAllEqual(np.array([[(1+2j), (3+4j), (5+6j)]]), a)
 
-  def testComplexNpArray(self):
+  def testComplex128N(self):
+    t = tensor_util.make_tensor_proto([(1+2j), (3+4j), (5+6j)], shape=[1, 3],
+                                      dtype=tf.complex128)
+    self.assertProtoEquals("""
+      dtype: DT_COMPLEX128
+      tensor_shape { dim { size: 1 } dim { size: 3 } }
+      dcomplex_val: 1
+      dcomplex_val: 2
+      dcomplex_val: 3
+      dcomplex_val: 4
+      dcomplex_val: 5
+      dcomplex_val: 6
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.complex128, a.dtype)
+    self.assertAllEqual(np.array([[(1+2j), (3+4j), (5+6j)]]), a)
+
+  def testComplex64NpArray(self):
     t = tensor_util.make_tensor_proto(
         np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), dtype=tf.complex64)
     # scomplex_val are real_0, imag_0, real_1, imag_1, ...
@@ -332,6 +361,26 @@ class TensorUtilTest(tf.test.TestCase):
       """, t)
     a = tensor_util.MakeNdarray(t)
     self.assertEquals(np.complex64, a.dtype)
+    self.assertAllEqual(np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), a)
+
+  def testComplex128NpArray(self):
+    t = tensor_util.make_tensor_proto(
+        np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), dtype=tf.complex128)
+    # scomplex_val are real_0, imag_0, real_1, imag_1, ...
+    self.assertProtoEquals("""
+      dtype: DT_COMPLEX128
+      tensor_shape { dim { size: 2 } dim { size: 2 } }
+      dcomplex_val: 1
+      dcomplex_val: 2
+      dcomplex_val: 3
+      dcomplex_val: 4
+      dcomplex_val: 5
+      dcomplex_val: 6
+      dcomplex_val: 7
+      dcomplex_val: 8
+      """, t)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.complex128, a.dtype)
     self.assertAllEqual(np.array([[(1+2j), (3+4j)], [(5+6j), (7+8j)]]), a)
 
   def testUnsupportedDType(self):
@@ -366,68 +415,68 @@ class ConstantValueTest(tf.test.TestCase):
   def testConstant(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.constant(np_val)
-    self.assertAllClose(np_val, tf.unsupported.constant_value(tf_val))
+    self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
     np_val = np.random.rand(3, 0, 7).astype(np.float32)
     tf_val = tf.constant(np_val)
-    self.assertAllClose(np_val, tf.unsupported.constant_value(tf_val))
+    self.assertAllClose(np_val, tf.contrib.util.constant_value(tf_val))
 
   def testUnknown(self):
     tf_val = state_ops.variable_op(shape=[3, 4, 7], dtype=tf.float32)
-    self.assertIs(None, tf.unsupported.constant_value(tf_val))
+    self.assertIs(None, tf.contrib.util.constant_value(tf_val))
 
   def testShape(self):
     np_val = np.array([1, 2, 3], dtype=np.int32)
     tf_val = tf.shape(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllEqual(np_val, c_val)
     self.assertEqual(np.int32, c_val.dtype)
 
   def testSize(self):
     tf_val = tf.size(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(6, c_val)
 
   def testSizeOfScalar(self):
     tf_val = tf.size(tf.constant(0.0))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(1, c_val)
     self.assertEqual(np.int32, type(c_val))
 
   def testRank(self):
     tf_val = tf.rank(tf.constant(0.0, shape=[1, 2, 3]))
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(3, c_val)
 
   def testCast(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.cast(tf.constant(np_val), tf.float64)
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
     np_val = np.random.rand(3, 0, 7).astype(np.float32)
     tf_val = tf.cast(tf.constant(np_val), tf.float64)
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val.astype(np.float64), c_val)
 
   def testConcat(self):
     np_val = np.random.rand(3, 4, 7).astype(np.float32)
     tf_val = tf.concat(
         0, [np_val[0:1, :, :], np_val[1:2, :, :], np_val[2:3, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
     tf_val = tf.concat(
         tf.placeholder(tf.int32),
         [np_val[0, :, :], np_val[1, :, :], np_val[2, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
     tf_val = tf.concat(
         1,
         [np_val[0, :, :], tf.placeholder(tf.float32),
          np_val[2, :, :]])
-    c_val = tf.unsupported.constant_value(tf_val)
+    c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
 

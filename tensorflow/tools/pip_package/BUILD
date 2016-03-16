@@ -6,10 +6,9 @@ package(default_visibility = ["//visibility:private"])
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 
 transitive_hdrs(
-    name = "framework_headers",
+    name = "other_headers",
     deps = [
         "//third_party/eigen3",
-        "//tensorflow/core:framework_headers",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -28,10 +27,10 @@ sh_binary(
         "MANIFEST.in",
         "README",
         "setup.py",
-        ":framework_headers",
+        "//tensorflow/core:framework_headers",
+        ":other_headers",
         ":simple_console",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/core:libtensorflow_framework.so",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",
         "//tensorflow/models/image/cifar10:all_files",

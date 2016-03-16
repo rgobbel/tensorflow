@@ -21,14 +21,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -46,29 +47,10 @@ class GraphConstructor {
   GraphConstructor(const GraphConstructorOptions& opts, const GraphDef* gdef,
                    Graph* g, Status* status)
       : opts_(opts), gdef_(gdef), g_(g), status_(status) {
-    if (gdef->versions().producer() < TF_GRAPH_DEF_VERSION_MIN_PRODUCER) {
-      *status = errors::InvalidArgument(
-          "GraphDef producer version ", gdef->versions().producer(),
-          " below min producer ", TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-          " supported by TensorFlow ", TF_VERSION_STRING,
-          ".  Please regenerate your graph.");
-      return;
-    }
-    if (gdef->versions().min_consumer() > TF_GRAPH_DEF_VERSION) {
-      *status = errors::InvalidArgument(
-          "GraphDef min consumer version ", gdef->versions().min_consumer(),
-          " above current version ", TF_GRAPH_DEF_VERSION, " for TensorFlow ",
-          TF_VERSION_STRING, ".  Please upgrade TensorFlow.");
-      return;
-    }
-    for (const int bad_consumer : gdef->versions().bad_consumers()) {
-      if (bad_consumer == TF_GRAPH_DEF_VERSION) {
-        *status = errors::InvalidArgument(
-            "GraphDef disallows consumer version ", bad_consumer,
-            ".  Please upgrade TensorFlow: this version is likely buggy.");
-        return;
-      }
-    }
+    *status =
+        CheckVersions(gdef->versions(), TF_GRAPH_DEF_VERSION,
+                      TF_GRAPH_DEF_VERSION_MIN_PRODUCER, "GraphDef", "graph");
+    if (!status->ok()) return;
     g->set_versions(gdef->versions());
     BuildNodeIndex();
     InitFromEdges();
@@ -144,20 +126,21 @@ void GraphConstructor::SetError(const string& error) {
   status_->Update(errors::InvalidArgument(error));
 }
 
-void GraphConstructor::BuildNodeIndex() {
-  // Initialized outside the loop for efficiency
-  const char* pattern;
-  if (opts_.allow_internal_ops) {
-    pattern = "[A-Za-z0-9._][A-Za-z0-9_.\\-/]*";
-  } else {
-    pattern = "[A-Za-z0-9.][A-Za-z0-9_.\\-/]*";
-  }
-  RE2 node_name_re(pattern);
+bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
+  using ::tensorflow::strings::Scanner;
+  return Scanner(s)
+      .One(allow_internal_ops ? Scanner::LETTER_DIGIT_DOT_UNDERSCORE
+                              : Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
+      .Eos()
+      .GetResult();
+}
 
+void GraphConstructor::BuildNodeIndex() {
   // Validate the node names and add them to name_index_.
   for (int n = 0; n < gdef_->node_size(); ++n) {
     const NodeDef& node_def(gdef_->node(n));
-    if (!RE2::FullMatch(node_def.name(), node_name_re)) {
+    if (!IsValidNodeName(node_def.name(), opts_.allow_internal_ops)) {
       SetNodeError(node_def, "Node name contains invalid characters");
       return;
     }

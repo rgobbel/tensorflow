@@ -10,6 +10,7 @@ cc_library(
         [
             "*.cc",
             "lib/*.cc",
+            "platform/default/*.cc",
         ],
         exclude = [
             "**/*_test.cc",
@@ -23,6 +24,7 @@ cc_library(
         "*.h",
         "cuda/*.h",
         "lib/*.h",
+        "lib/gtl/*.h",
         "platform/**/*.h",
     ]),
     data = [

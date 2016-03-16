@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=g-bad-import-order,unused-import
 """Converts checkpoint variables into Const ops in a standalone GraphDef file.
 
 This script is designed to take a GraphDef proto, a SaverDef proto, and a set of
@@ -38,14 +37,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.python.client import graph_util
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import gfile
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -68,39 +63,24 @@ tf.app.flags.DEFINE_string("filename_tensor_name", "save/Const:0",
                            """The name of the tensor holding the save path.""")
 tf.app.flags.DEFINE_boolean("clear_devices", True,
                             """Whether to remove device specifications.""")
-
-
-def set_attr_dtype(node, key, value):
-  try:
-    node.attr[key].CopyFrom(value)
-  except KeyError:
-    pass
-
-
-def set_attr_tensor(node, key, value, dtype, shape=None):
-  try:
-    node.attr[key].CopyFrom(tf.AttrValue(
-        tensor=tensor_util.make_tensor_proto(value,
-                                             dtype=dtype,
-                                             shape=shape)))
-  except KeyError:
-    pass
+tf.app.flags.DEFINE_string("initializer_nodes", "", "comma separated list of "
+                           "initializer nodes to run before freezing.")
 
 
 def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
                  output_node_names, restore_op_name, filename_tensor_name,
-                 output_graph, clear_devices):
+                 output_graph, clear_devices, initializer_nodes):
   """Converts all variables in a graph and checkpoint into constants."""
 
-  if not gfile.Exists(input_graph):
+  if not tf.gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
     return -1
 
-  if input_saver and not gfile.Exists(input_saver):
+  if input_saver and not tf.gfile.Exists(input_saver):
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
 
-  if not gfile.Exists(input_checkpoint):
+  if not tf.gfile.Glob(input_checkpoint):
     print("Input checkpoint '" + input_checkpoint + "' doesn't exist!")
     return -1
 
@@ -109,7 +89,8 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
     return -1
 
   input_graph_def = tf.GraphDef()
-  with open(input_graph, "rb") as f:
+  mode = "rb" if input_binary else "r"
+  with tf.gfile.FastGFile(input_graph, mode) as f:
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
@@ -123,7 +104,7 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
 
   with tf.Session() as sess:
     if input_saver:
-      with open(input_saver, "rb") as f:
+      with tf.gfile.FastGFile(input_saver, mode) as f:
         saver_def = tf.train.SaverDef()
         if input_binary:
           saver_def.ParseFromString(f.read())
@@ -133,36 +114,13 @@ def freeze_graph(input_graph, input_saver, input_binary, input_checkpoint,
         saver.restore(sess, input_checkpoint)
     else:
       sess.run([restore_op_name], {filename_tensor_name: input_checkpoint})
-    found_variables = {}
-    for node in input_graph_def.node:
-      if node.op == "Assign":
-        variable_name = node.input[0]
-        found_variables[variable_name] = sess.run(variable_name + ":0")
+      if initializer_nodes:
+        sess.run(initializer_nodes)
+    output_graph_def = graph_util.convert_variables_to_constants(
+        sess, input_graph_def, output_node_names.split(","))
 
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = graph_util.extract_sub_graph(
-      input_graph_def, output_node_names.split(","))
-
-  output_graph_def = tf.GraphDef()
-  how_many_converted = 0
-  for input_node in inference_graph.node:
-    output_node = tf.NodeDef()
-    if input_node.name in found_variables:
-      output_node.op = "Const"
-      output_node.name = input_node.name
-      dtype = input_node.attr["dtype"]
-      data = found_variables[input_node.name]
-      set_attr_dtype(output_node, "dtype", dtype)
-      set_attr_tensor(output_node, "value", data, dtype.type, data.shape)
-      how_many_converted += 1
-    else:
-      output_node.CopyFrom(input_node)
-    output_graph_def.node.extend([output_node])
-
-  with gfile.FastGFile(output_graph, "w") as f:
+  with tf.gfile.GFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
-  print("Converted %d variables to const ops." % how_many_converted)
   print("%d ops in the final graph." % len(output_graph_def.node))
 
 
@@ -170,7 +128,7 @@ def main(unused_args):
   freeze_graph(FLAGS.input_graph, FLAGS.input_saver, FLAGS.input_binary,
                FLAGS.input_checkpoint, FLAGS.output_node_names,
                FLAGS.restore_op_name, FLAGS.filename_tensor_name,
-               FLAGS.output_graph, FLAGS.clear_devices)
+               FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes)
 
 if __name__ == "__main__":
   tf.app.run()

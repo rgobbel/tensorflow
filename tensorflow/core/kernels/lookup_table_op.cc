@@ -31,7 +31,7 @@ namespace lookup {
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified.
 //
-// This table is recommened for any variations to key values.
+// This table is recommended for any variations to key values.
 //
 // For look up, the table is required to be initialized (allocated
 // and populated). Once the table is marked as initialized it becomes read-only.
@@ -51,7 +51,10 @@ namespace lookup {
 template <class K, class V>
 class HashTable : public InitializableLookupTable {
  public:
-  size_t size() const override { return table_ ? table_->size() : 0; }
+  size_t size() const override {
+    // return the size of the table only if it's initialized, otherwise 0.
+    return table_ && is_initialized_ ? table_->size() : 0;
+  }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
 

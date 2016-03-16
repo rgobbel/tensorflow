@@ -25,18 +25,16 @@ import re
 import sys
 import threading
 
-import tensorflow.python.platform
-
 import numpy as np
 import six
 
 from google.protobuf import text_format
 
-from tensorflow.core.framework import config_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
@@ -106,7 +104,7 @@ def IsGoogleCudaEnabled():
 
 
 class TensorFlowTestCase(googletest.TestCase):
-  """Root class for tests that need to test tensor flow.
+  """Base class for tests that need to test TensorFlow.
   """
 
   def __init__(self, methodName="runTest"):
@@ -254,7 +252,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
@@ -264,7 +262,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
   # pylint: enable=g-doc-return-or-yield
 
@@ -523,6 +521,18 @@ class TensorFlowTestCase(googletest.TestCase):
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
     self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list())
+
+  def assertDeviceEqual(self, device1, device2):
+    """Asserts that the two given devices are the same.
+
+    Args:
+      device1: A string device name or TensorFlow `Device` object.
+      device2: A string device name or TensorFlow `Device` object.
+    """
+    device1 = pydev.canonical_name(device1)
+    device2 = pydev.canonical_name(device2)
+    self.assertEqual(device1, device2,
+                     "Devices %s and %s are not equal" % (device1, device2))
 
   # Fix Python 3 compatibility issues
   if six.PY3:

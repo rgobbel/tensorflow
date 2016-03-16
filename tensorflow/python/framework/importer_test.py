@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
 
@@ -173,6 +171,9 @@ class ImportGraphDefTest(tf.test.TestCase):
       self.assertEqual(b.name, 'import/B')
       self.assertEqual(c.name, 'import/C')
       self.assertEqual(d.name, 'import/D')
+
+      # Check that the op_def is still available.
+      self.assertNotEqual(None, a.op_def)
 
   def testInputMap(self):
     with tf.Graph().as_default():
@@ -500,6 +501,60 @@ class ImportGraphDefTest(tf.test.TestCase):
           return_elements=['A'], name='imported_graph')
       self.assertEqual(a.name, 'imported_graph/A')
 
+  def testNamePrefixColocationAttrs(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with tf.Graph().as_default():
+      b, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='imported_graph')
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' }
+          node { name: 'imported_graph/B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+  def testNamePrefixColocationAttrsMultipleImport(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    with tf.Graph().as_default():
+      b, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='')
+      _, = tf.import_graph_def(original_graph_def,
+                               return_elements=['B'], name='')
+      self.assertProtoEqualsVersion("""
+          node { name: 'A' op: 'None' }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'A_1' op: 'None' }
+          node { name: 'B_1' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A_1' } }
+          } }""", b.graph.as_graph_def())
+
+  def testNamePrefixColocationAttrsNotFound(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, 'does not exist during import'):
+        tf.import_graph_def(original_graph_def,
+                            return_elements=['B'], name='imported_graph')
+
   def testEmptyGraph(self):
     with tf.Graph().as_default() as g:
       init_version = g.version
@@ -580,6 +635,29 @@ class ImportGraphDefTest(tf.test.TestCase):
         self.assertEqual('/device:GPU:0', a5.device)
         self.assertEqual('/device:CPU:0', b5.device)  # cpu overrides gpu.
         self.assertEqual(c.device + '/device:GPU:0', c5.device)
+
+  def testWithDeviceFunctionDependingOnInputs(self):
+    with tf.Graph().as_default() as g:
+      with tf.device("/job:ps"):
+        v = tf.Variable(1.0)
+      unused_assign_op = v.assign(2.0)
+      unused_assign_2_op = v.assign(3.0)
+      unused_add_t = v + v
+    gdef = g.as_graph_def()
+
+    # We'll use the following device function to observe ops with two inputs.
+    ops_with_two_inputs = []
+    def input_counter(op):
+      if any(in_t.dtype.is_ref_dtype for in_t in op.inputs):
+        ops_with_two_inputs.append(op)
+      return ""
+
+    with tf.Graph().as_default() as g:
+      with tf.device(input_counter):
+        tf.import_graph_def(gdef)
+
+    # We expect to see the initializer, two assign operations, and the add op.
+    self.assertEqual(4, len(ops_with_two_inputs))
 
   def testGradient(self):
     with tf.Graph().as_default() as g:

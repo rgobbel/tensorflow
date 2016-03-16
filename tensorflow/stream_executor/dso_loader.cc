@@ -43,8 +43,8 @@ namespace internal {
 
 // TensorFlow OSS configure uses the following lines to configure versions. For
 // any modifications of the format, please make sure the script still works.
-string GetCudaVersion() { return "7.0"; }
-string GetCudnnVersion() { return "6.5"; }
+string GetCudaVersion() { return ""; }
+string GetCudnnVersion() { return ""; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cublas", GetCudaToolkitVersion()),
