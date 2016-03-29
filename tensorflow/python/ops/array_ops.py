@@ -57,6 +57,7 @@ or join multiple tensors together.
 @@space_to_depth
 @@depth_to_space
 @@gather
+@@gather_nd
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
@@ -405,6 +406,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     ValueError:  If shapes do not conform.
 
   Examples:
+
   ```python
   # 2-D example
   a = [[1, 2], [3, 4], [5, 6]]
@@ -876,6 +878,16 @@ def _GatherShape(op):
   params_shape = op.inputs[0].get_shape()
   indices_shape = op.inputs[1].get_shape()
   return [indices_shape.concatenate(params_shape[1:])]
+
+
+@ops.RegisterShape("GatherNd")
+def _GatherNdShape(op):
+  """Shape function for array_ops.gather_nd."""
+  params_shape = op.inputs[0].get_shape()
+  indices_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  if indices_shape.ndims is not None:
+    indices_shape[-1].merge_with(params_shape.ndims)
+  return [indices_shape[:-1]]
 
 
 @ops.RegisterShape("Unique")
@@ -1596,3 +1608,25 @@ def _OneHotShape(op):
     new_shape.insert(axis % (indices_dims + 1), depth)
 
   return [tensor_shape.TensorShape(new_shape)]
+
+
+@ops.RegisterShape("PlaceholderWithDefault")
+def _PlaceholderWithDefaultShape(op):
+  """Shape function for the PlaceholderWithDefault op.
+
+  This op acts as an identity when it is not fed (passing through a
+  default value), but allows the user to feed it with tensors of a
+  possibly less precise shape than its default value.
+
+  Args:
+    op: A PlaceholderWithDefault `Operation`.
+
+  Returns:
+    A single-element list containing the shape of the output.
+  """
+  input_shape = op.inputs[0].get_shape()
+  output_shape = tensor_shape.TensorShape(op.get_attr("shape"))
+  # NOTE(mrry): We don't merge these shapes, because `output_shape`
+  # may be *less* precise than `input_shape`.
+  input_shape.assert_is_compatible_with(output_shape)
+  return [output_shape]

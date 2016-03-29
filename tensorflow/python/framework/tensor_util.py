@@ -42,6 +42,9 @@ from tensorflow.python.framework import ops
 
 if _FAST_TENSOR_UTIL_AVAILABLE:
   _NP_TO_APPEND_FN = {
+      # TODO(sesse): We should have a
+      # fast_tensor_util.AppendFloat16ArrayToTensorProto,
+      # but it seems np.float16_t doesn't exist?
       np.float32: fast_tensor_util.AppendFloat32ArrayToTensorProto,
       np.float64: fast_tensor_util.AppendFloat64ArrayToTensorProto,
       np.int32: fast_tensor_util.AppendInt32ArrayToTensorProto,
@@ -63,6 +66,9 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 else:
+
+  def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendFloat32ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.float_val.extend([np.asscalar(x) for x in proto_values])
@@ -93,6 +99,7 @@ else:
     tensor_proto.bool_val.extend([np.asscalar(x) for x in proto_values])
 
   _NP_TO_APPEND_FN = {
+      np.float16: SlowAppendFloat16ArrayToTensorProto,
       np.float32: SlowAppendFloat32ArrayToTensorProto,
       np.float64: SlowAppendFloat64ArrayToTensorProto,
       np.int32: SlowAppendIntArrayToTensorProto,
@@ -502,26 +509,7 @@ def ShapeEquals(tensor_proto, shape):
   return all(x == y for x, y in zip(tensor_shape_list, shape))
 
 
-def constant_value(tensor):
-  """Returns the constant value of the given tensor, if efficiently calculable.
-
-  This function attempts to partially evaluate the given tensor, and
-  returns its value as a numpy ndarray if this succeeds.
-
-  TODO(mrry): Consider whether this function should use a registration
-  mechanism like gradients and ShapeFunctions, so that it is easily
-  extensible.
-
-  Args:
-    tensor: The Tensor to be evaluated.
-
-  Returns:
-    A numpy ndarray containing the constant value of the given `tensor`,
-    or None if it cannot be calculated.
-
-  Raises:
-    TypeError: if tensor is not an ops.Tensor.
-  """
+def _ConstantValue(tensor):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
@@ -576,3 +564,36 @@ def constant_value(tensor):
     return np.concatenate(values, axis=dim)
   else:
     return None
+
+
+def constant_value(tensor):
+  """Returns the constant value of the given tensor, if efficiently calculable.
+
+  This function attempts to partially evaluate the given tensor, and
+  returns its value as a numpy ndarray if this succeeds.
+
+  TODO(mrry): Consider whether this function should use a registration
+  mechanism like gradients and ShapeFunctions, so that it is easily
+  extensible.
+
+  NOTE: If `constant_value(tensor)` returns a non-`None` result, it will no
+  longer be possible to feed a different value for `tensor`. This allows the
+  result of this function to influence the graph that is constructed, and
+  permits static shape optimizations.
+
+  Args:
+    tensor: The Tensor to be evaluated.
+
+  Returns:
+    A numpy ndarray containing the constant value of the given `tensor`,
+    or None if it cannot be calculated.
+
+  Raises:
+    TypeError: if tensor is not an ops.Tensor.
+  """
+  ret = _ConstantValue(tensor)
+  if ret is not None:
+    # The caller may now depend on the constant value of `tensor`, so we
+    # conservatively prevent it from being fed.
+    tensor.graph.prevent_feeding(tensor)
+  return ret

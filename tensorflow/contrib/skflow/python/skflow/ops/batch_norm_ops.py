@@ -1,5 +1,5 @@
 """TensorFlow ops for Batch Normalization."""
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,8 +12,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -50,7 +51,7 @@ def batch_normalize(tensor_in, epsilon=1e-5, convnet=True, decay=0.9,
             with tf.control_dependencies([ema_assign_op]):
                 return tf.identity(assign_mean), tf.identity(assign_var)
         is_training = tf.squeeze(tf.get_collection("IS_TRAINING"))
-        mean, variance = tf.python.control_flow_ops.cond(
+        mean, variance = tf.cond(
             is_training, update_mean_var, lambda: (ema_mean, ema_var))
         return tf.nn.batch_norm_with_global_normalization(
             tensor_in, mean, variance, beta, gamma, epsilon,

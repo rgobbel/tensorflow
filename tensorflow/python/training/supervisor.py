@@ -578,7 +578,7 @@ class Supervisor(object):
       training_util.write_graph(self._graph.as_graph_def(),
                                 self._logdir, "graph.pbtxt")
     if self._summary_writer:
-      self._summary_writer.add_graph(self._graph.as_graph_def())
+      self._summary_writer.add_graph(self._graph)
 
   def start_standard_services(self, sess):
     """Start the standard services for 'sess'.
@@ -798,7 +798,7 @@ class Supervisor(object):
     """
     if not self._logdir:
       raise RuntimeError("summary_computed() requires a logdir")
-    if global_step is None and self.global_step:
+    if global_step is None and self.global_step is not None:
       global_step = training_util.global_step(sess, self.global_step)
     if self._summary_writer:
       self._summary_writer.add_summary(summary, global_step)
@@ -844,7 +844,7 @@ class SVSummaryThread(coordinator.LooperThread):
     self._sess = sess
 
   def run_loop(self):
-    if self._sv.global_step:
+    if self._sv.global_step is not None:
       summary_strs, global_step = self._sess.run([self._sv.summary_op,
                                                   self._sv.global_step])
     else:
@@ -912,7 +912,7 @@ class SVTimerCheckpointThread(coordinator.LooperThread):
   def run_loop(self):
     self._sv.saver.save(self._sess, self._sv.save_path,
                         global_step=self._sv.global_step)
-    if self._sv.summary_writer and self._sv.global_step:
+    if self._sv.summary_writer and self._sv.global_step is not None:
       current_step = training_util.global_step(self._sess, self._sv.global_step)
       self._sv.summary_writer.add_session_log(
           SessionLog(status=SessionLog.CHECKPOINT,

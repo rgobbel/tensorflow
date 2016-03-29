@@ -63,7 +63,7 @@ Returns a context manager that makes this `Graph` the default graph.
 This method should be used if you want to create multiple graphs
 in the same process. For convenience, a global default graph is
 provided, and all ops will be added to this graph if you do not
-create a new graph explicitly. Use this method the `with` keyword
+create a new graph explicitly. Use this method with the `with` keyword
 to specify that ops created within the scope of a block should be
 added to this graph.
 
@@ -409,6 +409,31 @@ Returns a list of values in the collection with the given `name`.
   collected.
 
 
+- - -
+
+#### `tf.Graph.get_collection_ref(name)` {#Graph.get_collection_ref}
+
+Returns a list of values in the collection with the given `name`.
+
+If the collection exists, this returns the list itself, which can
+be modified in place to change the collection.  If the collection does
+not exist, it is created as an empty list and the list is returned.
+
+This is different from `get_collection()` which always returns a copy of
+the collection list if it exists and never creates an empty collection.
+
+##### Args:
+
+
+*  <b>`name`</b>: The key for the collection. For example, the `GraphKeys` class
+    contains many standard names for collections.
+
+##### Returns:
+
+  The list of values in the collection with the given `name`, or an empty
+  list if no value has been added to that collection.
+
+
 
 - - -
 
@@ -518,7 +543,7 @@ This method may be called concurrently from multiple threads.
 
 #### `tf.Graph.seed` {#Graph.seed}
 
-
+The graph-level random seed of this graph.
 
 
 - - -
@@ -734,6 +759,20 @@ is eventually placed.
 #### `tf.Graph.get_all_collection_keys()` {#Graph.get_all_collection_keys}
 
 Returns a list of collections used in this graph.
+
+
+- - -
+
+#### `tf.Graph.is_feedable(tensor)` {#Graph.is_feedable}
+
+Returns `True` if and only if `tensor` is feedable.
+
+
+- - -
+
+#### `tf.Graph.prevent_feeding(tensor)` {#Graph.prevent_feeding}
+
+Marks the given `tensor` as unfeedable in this graph.
 
 
 
@@ -1211,10 +1250,12 @@ Represents the type of the elements in a `Tensor`.
 
 The following `DType` objects are defined:
 
+* `tf.float16`: 16-bit half-precision floating-point.
 * `tf.float32`: 32-bit single-precision floating-point.
 * `tf.float64`: 64-bit double-precision floating-point.
 * `tf.bfloat16`: 16-bit truncated floating-point.
 * `tf.complex64`: 64-bit single-precision complex.
+* `tf.complex128`: 128-bit double-precision complex.
 
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
@@ -1561,15 +1602,15 @@ and scalars in addition to `Tensor` objects.
 
 Converts the given object to a `Tensor` or an `IndexedSlices`.
 
-If `value` is an `IndexedSlices` it is returned
+If `value` is an `IndexedSlices` or `SparseTensor` it is returned
 unmodified. Otherwise, it is converted to a `Tensor` using
 `convert_to_tensor()`.
 
 ##### Args:
 
 
-*  <b>`value`</b>: An `IndexedSlices` or an object that can be consumed by
-    `convert_to_tensor()`.
+*  <b>`value`</b>: An `IndexedSlices`, `SparseTensor`, or an object that can be consumed
+    by `convert_to_tensor()`.
 *  <b>`dtype`</b>: (Optional.) The required `DType` of the returned `Tensor` or
     `IndexedSlices`.
 *  <b>`name`</b>: (Optional.) A name to use if a new `Tensor` is created.
@@ -1577,7 +1618,7 @@ unmodified. Otherwise, it is converted to a `Tensor` using
 
 ##### Returns:
 
-  An `Tensor` or an `IndexedSlices` based on `value`.
+  An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
 ##### Raises:
 
@@ -1673,8 +1714,6 @@ Loads a TensorFlow plugin, containing custom ops and kernels.
 Pass "library_filename" to a platform-specific mechanism for dynamically
 loading a library. The rules for determining the exact location of the
 library are platform-specific and are not documented here.
-Expects the symbols "RegisterOps", "RegisterKernels", and "GetOpList", to be
-defined in the library.
 
 ##### Args:
 
@@ -1736,6 +1775,29 @@ for more details.
   an empty list if no value has been added to that collection. The
   list contains the values in the order under which they were
   collected.
+
+
+- - -
+
+### `tf.get_collection_ref(key)` {#get_collection_ref}
+
+Wrapper for `Graph.get_collection_ref()` using the default graph.
+
+See [`Graph.get_collection_ref()`](../../api_docs/python/framework.md#Graph.get_collection_ref)
+for more details.
+
+##### Args:
+
+
+*  <b>`key`</b>: The key for the collection. For example, the `GraphKeys` class
+    contains many standard names for collections.
+
+##### Returns:
+
+  The list of values in the collection with the given `name`, or an empty
+  list if no value has been added to that collection.  Note that this returns
+  the collection list itself, which can be modified in place to change the
+  collection.
 
 
 - - -

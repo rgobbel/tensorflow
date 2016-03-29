@@ -55,6 +55,7 @@ from __future__ import print_function
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
+from tensorflow.python.client.server_lib import ClusterSpec
 from tensorflow.python.client.server_lib import GrpcServer
 
 from tensorflow.python.client.session import InteractiveSession

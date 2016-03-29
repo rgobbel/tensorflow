@@ -23,11 +23,8 @@ import os
 import shutil
 import time
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.platform import gfile
 
 
 def _summary_iterator(test_dir):
@@ -70,7 +67,7 @@ class SupervisorTest(tf.test.TestCase):
         my_op = tf.constant([1.0])
       sv = tf.train.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session(
-          "", config=config_pb2.ConfigProto(device_count={"CPU": 2}))
+          "", config=tf.ConfigProto(device_count={"CPU": 2}))
       for _ in xrange(10):
         sess.run(my_op)
       sess.close()
@@ -99,7 +96,7 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
 
     # The next one should have the values from the summary.
     ev = next(rr)
@@ -111,7 +108,7 @@ class SupervisorTest(tf.test.TestCase):
 
     # The next one should be a stop message if we closed cleanly.
     ev = next(rr)
-    self.assertEquals(SessionLog.STOP, ev.session_log.status)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
@@ -257,6 +254,7 @@ class SupervisorTest(tf.test.TestCase):
     # Create a new Graph and Supervisor and recover.
     with tf.Graph().as_default():
       new_saver = tf.train.import_meta_graph(".".join([filename, "meta"]))
+      self.assertIsNotNone(new_saver)
       sv2 = tf.train.Supervisor(logdir=logdir, saver=new_saver)
       sess = sv2.prepare_or_wait_for_session("")
       self.assertEquals(1, sess.run("v0:0"))
@@ -272,7 +270,7 @@ class SupervisorTest(tf.test.TestCase):
     """
     end_time = time.time() + timeout_secs
     while time.time() < end_time:
-      if len(gfile.Glob(pattern)) >= 1:
+      if len(tf.gfile.Glob(pattern)) >= 1:
         return
       time.sleep(0.05)
     self.assertFalse(True, "Glob never matched any file: %s" % pattern)
@@ -301,11 +299,11 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
     ev = next(rr)
     self.assertProtoEquals("value { tag: 'v' simple_value: 1.0 }", ev.summary)
     ev = next(rr)
-    self.assertEquals(SessionLog.STOP, ev.session_log.status)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
 
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
@@ -338,12 +336,12 @@ class SupervisorTest(tf.test.TestCase):
     ev = next(rr)
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
-    self.assertProtoEquals(sess.graph_def, ev_graph)
+    self.assertProtoEquals(sess.graph.as_graph_def(add_shapes=True), ev_graph)
     ev = next(rr)
     # It is actually undeterministic whether SessionLog.START gets written
     # before the summary or the checkpoint, but this works when run 10000 times.
     self.assertEquals(123, ev.step)
-    self.assertEquals(SessionLog.START, ev.session_log.status)
+    self.assertEquals(tf.SessionLog.START, ev.session_log.status)
     first = next(rr)
     second = next(rr)
     # It is undeterministic whether the value gets written before the checkpoint
@@ -353,15 +351,15 @@ class SupervisorTest(tf.test.TestCase):
                                         simple_value: 0.0 }""",
                              first.summary)
       self.assertEquals(123, second.step)
-      self.assertEquals(SessionLog.CHECKPOINT, second.session_log.status)
+      self.assertEquals(tf.SessionLog.CHECKPOINT, second.session_log.status)
     else:
       self.assertEquals(123, first.step)
-      self.assertEquals(SessionLog.CHECKPOINT, first.session_log.status)
+      self.assertEquals(tf.SessionLog.CHECKPOINT, first.session_log.status)
       self.assertProtoEquals("""value { tag: 'global_step/sec'
                                         simple_value: 0.0 }""",
                              second.summary)
     ev = next(rr)
-    self.assertEquals(SessionLog.STOP, ev.session_log.status)
+    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
     with tf.Graph().as_default(), self.test_session() as sess:

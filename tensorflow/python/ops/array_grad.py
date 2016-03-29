@@ -156,9 +156,14 @@ def _SplitGrad(op, *grads):
 
 ops.NoGradient("Const")
 
-# TODO(liqzhang): The gradient for Diag operator would be
-# the diagonal of the backprop. Implement if there is a need.
-ops.NoGradient("Diag")
+
+@ops.RegisterGradient("Diag")
+def _DiagGrad(_, grad):
+  return array_ops.diag_part(grad)
+
+@ops.RegisterGradient("DiagPart")
+def _DiagPartGrad(_, grad):
+  return array_ops.diag(grad)
 
 # Edit Distance has no gradient (but can be used to eval seq2seq or CTC).
 ops.NoGradient("EditDistance")
@@ -186,6 +191,11 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(op.inputs[1], [-1])
   return [ops.IndexedSlices(values, indices, dense_shape), None]
+
+
+@ops.RegisterGradient("GatherNd")
+def _GatherNdGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for gather_nd is not implemented.")
 
 
 @ops.RegisterGradient("Identity")

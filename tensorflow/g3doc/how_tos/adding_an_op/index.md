@@ -63,6 +63,12 @@ overrides the `Compute` method. The `Compute` method provides one `context`
 argument of type `OpKernelContext*`, from which you can access useful things
 like the input and output tensors.
 
+> Important note: Instances of your OpKernel may be accessed concurrently. Your
+> `Compute` method must be thread-safe. Guard any access to class members with a
+> mutex (Or better yet, don't share state via class members! Consider using a
+> [`ResourceMgr`](https://www.tensorflow.org/code/tensorflow/core/framework/resource_mgr.h)
+> to keep track of Op state).
+
 Add your kernel to the file you created above. The kernel might look something
 like this:
 
@@ -133,8 +139,14 @@ to compile your Op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -I $TF_INC
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
 ```
+
+> Note on gcc version 5: gcc5 uses the new C++
+[ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip packages
+available on the TensorFlow website are built with gcc4 that uses the older ABI.
+If you compile your op library with gcc5, add `-D_GLIBCXX_USE_CXX11_ABI=0` to
+the command line to make the library compatible with the older abi.
 
 ### With TensorFlow source installation
 

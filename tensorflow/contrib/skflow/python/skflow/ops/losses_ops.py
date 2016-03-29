@@ -1,5 +1,5 @@
 """TensorFlow Ops for loss computation."""
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,8 +12,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -46,7 +47,7 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
     """
     with tf.op_scope([tensor_in, labels], name, "softmax_classifier"):
         logits = tf.nn.xw_plus_b(tensor_in, weights, biases)
-        if class_weight:
+        if class_weight is not None:
             logits = tf.mul(logits, class_weight)
         xent = tf.nn.softmax_cross_entropy_with_logits(logits,
                                                        labels,
@@ -54,4 +55,3 @@ def softmax_classifier(tensor_in, labels, weights, biases, class_weight=None, na
         loss = tf.reduce_mean(xent, name="xent")
         predictions = tf.nn.softmax(logits, name=name)
         return predictions, loss
-

@@ -193,6 +193,7 @@ class Allocator {
   template <typename T>
   struct is_simple {
     static const bool value = std::is_trivial<T>::value ||
+                              std::is_same<T, Eigen::half>::value ||
                               std::is_same<T, complex64>::value ||
                               std::is_same<T, complex128>::value ||
                               is_quantized<T>::value;
@@ -291,6 +292,15 @@ Allocator* cpu_allocator();
 // If 'enable' is true, the process-wide cpu allocator collects
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
+
+// Abstract interface of an object that does the underlying suballoc/free of
+// memory for a higher-level allocator.
+class SubAllocator {
+ public:
+  virtual ~SubAllocator() {}
+  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  virtual void Free(void* ptr, size_t num_bytes) = 0;
+};
 
 }  // namespace tensorflow
 

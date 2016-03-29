@@ -1,5 +1,31 @@
 # -*- Python -*-
 
+# Parse the bazel version string from `native.bazel_version`.
+def _parse_bazel_version(bazel_version):
+  # Remove commit from version.
+  version = bazel_version.split(" ", 1)[0]
+
+  # Split into (release, date) parts and only return the release
+  # as a tuple of integers.
+  parts = version.split('-', 1)
+
+  # Turn "release" into a tuple of integers
+  version_tuple = ()
+  for number in parts[0].split('.'):
+    version_tuple += (int(number),)
+  return version_tuple
+
+
+# Check that a specific bazel version is being used.
+def check_version(bazel_version):
+  if "bazel_version" in dir(native):
+    current_bazel_version = _parse_bazel_version(native.bazel_version)
+    minimum_bazel_version = _parse_bazel_version(bazel_version)
+    if minimum_bazel_version > current_bazel_version:
+      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
+          native.bazel_version, bazel_version))
+  pass
+
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 
@@ -167,9 +193,10 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[]):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
   name = name.replace(".cc", "")
   native.cc_test(name="%s" % (name.replace("/", "_")),
+                 size=size,
                  srcs=["%s.cc" % (name)],
                  copts=tf_copts(),
                  data=data,
@@ -180,9 +207,9 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[]):
 
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[]):
+def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
   for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags)
+    tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
 
 # Build defs for TensorFlow kernels
 
@@ -199,8 +226,9 @@ def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
       hdrs = hdrs,
       copts = copts + if_cuda(cuda_copts),
       deps = deps + if_cuda([
-          "//tensorflow/core:stream_executor",
-      ]) + ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+          "//tensorflow/core:cuda",
+          "//tensorflow/core:gpu_lib",
+      ]),
       alwayslink=1,
       **kwargs)
 
@@ -228,8 +256,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-      deps = deps + if_cuda(cuda_deps) +
-          ["//tensorflow/core/platform/default/build_config:cuda_runtime_extra"],
+      deps = deps + if_cuda(cuda_deps + ["//tensorflow/core:cuda"]),
       copts = copts + if_cuda(["-DGOOGLE_CUDA=1"]),
       **kwargs)
 
@@ -262,7 +289,6 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     hdrs = []
   if not deps:
     deps = []
-  gpu_deps = deps + ["//tensorflow/core:cuda"]
 
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
@@ -279,7 +305,7 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
     tf_gpu_kernel_library(
         name = name + "_gpu",
         srcs = gpu_srcs,
-        deps = gpu_deps,
+        deps = deps,
         **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
   tf_cuda_library(
@@ -394,7 +420,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   cuda_deps = [
       "//tensorflow/core:stream_executor_headers_lib",
-      "//tensorflow/core/platform/default/build_config:cuda",
+      "//third_party/gpus/cuda:cudart_static",
   ]
   deps = deps + [
       "//third_party/eigen3",
@@ -460,10 +486,11 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 
-def tf_py_test(name, srcs, data=[], main=None, args=[],
+def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                tags=[], shard_count=1, additional_deps=[]):
   native.py_test(
       name=name,
+      size=size,
       srcs=srcs,
       main=main,
       args=args,
@@ -478,10 +505,11 @@ def tf_py_test(name, srcs, data=[], main=None, args=[],
       srcs_version="PY2AND3")
 
 
-def cuda_py_test(name, srcs, data=[], main="", args=[],
+def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
                  shard_count=1, additional_deps=[]):
   test_tags = tf_cuda_tests_tags()
   tf_py_test(name=name,
+             size=size,
              srcs=srcs,
              data=data,
              main=main,
@@ -492,6 +520,7 @@ def cuda_py_test(name, srcs, data=[], main="", args=[],
 
 def py_tests(name,
              srcs,
+             size="medium",
              additional_deps=[],
              data=[],
              tags=[],
@@ -501,16 +530,17 @@ def py_tests(name,
     test_name = src.split("/")[-1].split(".")[0]
     if prefix:
       test_name = "%s_%s" % (prefix, test_name)
-      tf_py_test(name=test_name,
-                 srcs=[src],
-                 main=src,
-                 tags=tags,
-                 shard_count=shard_count,
-                 data=data,
-                 additional_deps=additional_deps)
+    tf_py_test(name=test_name,
+               size=size,
+               srcs=[src],
+               main=src,
+               tags=tags,
+               shard_count=shard_count,
+               data=data,
+               additional_deps=additional_deps)
 
 
-def cuda_py_tests(name, srcs, additional_deps=[], data=[], shard_count=1):
+def cuda_py_tests(name, srcs, size="medium", additional_deps=[], data=[], shard_count=1):
   test_tags = tf_cuda_tests_tags()
-  py_tests(name=name, srcs=srcs, additional_deps=additional_deps, data=data,
-           tags=test_tags, shard_count=shard_count)
+  py_tests(name=name, size=size, srcs=srcs, additional_deps=additional_deps,
+           data=data, tags=test_tags, shard_count=shard_count)

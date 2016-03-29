@@ -1,5 +1,5 @@
 """Generic trainer for TensorFlow models."""
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -13,7 +13,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from six.moves import xrange   # pylint: disable=redefined-builtin
 
@@ -121,7 +123,7 @@ class TensorFlowTrainer(object):
         """
         for step in xrange(steps):
             feed_dict = feed_dict_fn()
-            if summaries:
+            if summaries is not None:
                 global_step, loss, summ, _ = sess.run(
                     [self.global_step, self.loss, summaries, self.trainer],
                     feed_dict=feed_dict)
@@ -131,7 +133,7 @@ class TensorFlowTrainer(object):
                     feed_dict=feed_dict)
             monitor.update(step, global_step, loss, sess,
                            feed_params_fn, loss_expression_tensor=self.loss)
-            if summaries and summary_writer and summ is not None:
+            if summaries is not None and summary_writer and summ is not None:
                 summary_writer.add_summary(summ, global_step)
             if monitor.monitor_inducing_stop():
                 break

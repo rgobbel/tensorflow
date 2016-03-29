@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import warnings
 
 import numpy as np
 import tensorflow as tf
@@ -63,7 +62,7 @@ class UnaryOpTest(tf.test.TestCase):
         return  # Return early
 
       if x.dtype == np.complex64 and tf_func in (
-          tf.abs, _ABS, tf.sqrt, tf.rsqrt, tf.log):
+          tf.sign, tf.sqrt, tf.rsqrt, tf.log):
         return  # Return early
 
       if x.dtype == np.float32 or x.dtype == np.complex64:
@@ -219,7 +218,7 @@ class UnaryOpTest(tf.test.TestCase):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
         np.complex64)
     y = x + 0.5  # no zeros
-    self._compareCpu(x, np.abs, tf.abs)
+    self._compareCpu(x, np.abs, tf.complex_abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareCpu(x, np.negative, tf.neg)
     self._compareCpu(x, np.negative, _NEG)
@@ -233,6 +232,11 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, self._sigmoid, tf.sigmoid)
     self._compareCpu(x, np.sin, tf.sin)
     self._compareCpu(x, np.cos, tf.cos)
+
+    # Numpy uses an incorrect definition of sign; use the right one instead.
+    def complex_sign(x):
+      return x / np.abs(x)
+    self._compareCpu(y, complex_sign, tf.sign)
 
 
 class BinaryOpTest(tf.test.TestCase):
@@ -895,34 +899,25 @@ class LogicalOpTest(tf.test.TestCase):
         f(x, y)
 
   def testUsingAsPythonValueFails(self):
-    # TODO(mrry): Replace with `assertRaises(TypeError)` after this
-    # functionality is deprecated.
-    warnings.simplefilter("always")
     # Ensure that we raise an error when the user attempts to treat a
     # `Tensor` as a Python `bool`.
     b = tf.constant(False)
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       if b:
         pass
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
     x = tf.constant(3)
     y = tf.constant(4)
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       if x > y:
         pass
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
     z = tf.constant(7)
 
     # The chained comparison should fail because Python computes `x <
     # y` and short-circuits the comparison with `z` if it is `False`.
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertRaises(TypeError):
       _ = x < y < z
-    self.assertEqual(1, len(w))
-    self.assertTrue("`bool` is deprecated" in str(w[-1].message))
 
 
 class SelectOpTest(tf.test.TestCase):

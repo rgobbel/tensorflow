@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import traceback
 
 import six
 
@@ -108,8 +109,13 @@ class _VariableStore(object):
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if should_check and not reuse:
+        tb = self._vars[name].op.traceback[::-1]
+        # Throw away internal tf entries and only take a few lines.
+        tb = [x for x in tb if "tensorflow/python" not in x[0]][:3]
         raise ValueError("Variable %s already exists, disallowed."
-                         " Did you mean to set reuse=True in VarScope?" % name)
+                         " Did you mean to set reuse=True in VarScope? "
+                         "Originally defined at:\n\n%s" % (
+                             name, "".join(traceback.format_list(tb))))
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
         raise ValueError("Trying to share variable %s, but specified shape %s"
@@ -353,7 +359,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
 
   """
   get_variable_scope()  # Ensure that a default exists, then get a pointer.
-  default_varscope = ops.get_collection(_VARSCOPE_KEY)
+  # Get the reference to the collection as we want to modify it in place.
+  default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
   try:
     old = default_varscope[0]
     reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.

@@ -133,6 +133,25 @@ value: Attr `value` is the tensor to return.
 )doc");
 
 // --------------------------------------------------------------------------
+// TODO(mgubin): Update the doc when the freeze_graph script supports converting
+// into memmapped format.
+REGISTER_OP("ImmutableConst")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Attr("memory_region_name: string")
+    .Output("tensor: dtype")
+    .Doc(R"doc(
+Returns immutable tensor from memory region.
+
+The current implementation memmaps the tensor from a file.
+
+dtype: Type of the returned tensor.
+shape: Shape of the returned tensor.
+memory_region_name: Name of readonly memory region used by the tensor, see
+  NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ZerosLike")
     .Input("x: T")
     .Output("y: T")
@@ -386,6 +405,34 @@ this operation will permute `params` accordingly.
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
 </div>
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("GatherNd")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Doc(R"doc(
+Gather values from `params` according to `indices`.
+
+`indices` must be integer tensor, containing indices into `params`.
+It must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.
+The innermost dimension of `indices` (with length `R`) corresponds to the
+indices of `params`.
+
+Produces an output tensor with shape `[d_0, ..., d_{n-1}]` where:
+
+    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]
+
+e.g. for `indices` a matrix:
+
+    output[i] = params[indices[i, :]]
+
+params: R-D.  The tensor from which to gather values.
+indices: (N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`.
+output: N-D.  Values from `params` gathered from indices given by `indices`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1002,6 +1049,21 @@ output: A placeholder tensor that must be replaced using the feed mechanism.
 dtype: The type of elements in the tensor.
 shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("PlaceholderWithDefault")
+    .Input("input: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .Doc(R"doc(
+A placeholder op that passes though `input` when its output is not fed.
+
+input: The default value to produce when `output` is not fed.
+output: A placeholder tensor that defaults to `input` if it is not fed.
+dtype: The type of elements in the tensor.
+shape: The (possibly partial) shape of the tensor.
 )doc");
 
 // --------------------------------------------------------------------------

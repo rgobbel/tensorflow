@@ -21,11 +21,11 @@ cc_library(
 )
 
 cc_test(
-    name = "loss_updaters_test",
-    srcs = ["loss_updaters_test.cc"],
+    name = "loss_test",
+    size = "small",
+    srcs = ["loss_test.cc"],
     deps = [
         ":loss_updaters",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -45,6 +45,7 @@ cc_library(
 
 cc_test(
     name = "resources_test",
+    size = "small",
     srcs = ["resources_test.cc"],
     deps = [
         ":resources",

@@ -1,4 +1,4 @@
-#t Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#t Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -17,8 +17,11 @@ This example demonstrates one way to access the weights of a custom skflow
 model. It is otherwise identical to the standard MNIST convolutional code.
 """
 
-from sklearn import metrics
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+from sklearn import metrics
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.contrib import skflow

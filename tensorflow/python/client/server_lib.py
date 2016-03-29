@@ -22,6 +22,7 @@ import six  # pylint: disable=unused-import
 
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 class GrpcServer(object):
@@ -84,3 +85,90 @@ class GrpcServer(object):
       A string containing a session target for this server.
     """
     return self._server.target()
+
+  @staticmethod
+  def create_local_server(start=True):
+    """Creates a new single-process cluster running on the local host.
+
+    This method is a convenience wrapper for calling
+    `GrpcServer.__init__()` with a `tf.ServerDef` that specifies a
+    single-process cluster, with a single task in a job called
+    `"local"`.
+
+    Args:
+      start: (Optional.) Boolean, indicating whether to start the server after
+        creating it. Defaults to `True`.
+
+    Returns:
+      A local `tf.GrpcServer`.
+    """
+    server_def = tensorflow_server_pb2.ServerDef(protocol="grpc")
+    job_def = server_def.cluster.job.add()
+    job_def.name = "local"
+    job_def.tasks[0] = "localhost:0"
+    server_def.job_name = job_def.name
+    server_def.task_index = 0
+    return GrpcServer(server_def, start)
+
+
+class ClusterSpec(object):
+  """A class for representing a Cluster."""
+
+  def __init__(self, cluster):
+    """Creates a `ClusterSpec`.
+
+    Args:
+      cluster: A dictionary mapping one or more job names to lists of network
+        addresses, or a `tf.ClusterDef` protocol buffer.
+
+    Raises:
+      TypeError: If `cluster` is not a dictionary mapping strings to lists
+        of strings, and not a `ClusterDef` proto buf.
+    """
+    if isinstance(cluster, dict):
+      self._cluster_spec = cluster
+      self._make_cluster_def()
+    elif isinstance(cluster, tensorflow_server_pb2.ClusterDef):
+      self._cluster_def = cluster
+      self._cluster_spec = {}
+      for job_def in self._cluster_def.job:
+        self._cluster_spec[job_def.name] = [t for t in job_def.tasks.values()]
+    else:
+      raise TypeError("`cluster` must be a dictionary mapping one or more "
+                      "job names to lists of network addresses, or a "
+                      "`ClusterDef` protocol buffer")
+
+  def as_cluster_spec(self):
+    """Returns a dictionary from job names to list of network addresses."""
+    return self._cluster_spec
+
+  def as_cluster_def(self):
+    """Returns a `tf.ClusterDef` protocol buffer."""
+    return self._cluster_def
+
+  def _make_cluster_def(self):
+    """Creates a `tf.ClusterDef` based on the given `cluster_spec`.
+
+    Raises:
+      TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
+        of strings.
+    """
+    self._cluster_def = tensorflow_server_pb2.ClusterDef()
+
+    # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
+    for job_name, task_list in sorted(self._cluster_spec.items()):
+      try:
+        job_name = compat.as_bytes(job_name)
+      except TypeError:
+        raise TypeError("Job name %r must be bytes or unicode" % job_name)
+
+      job_def = self._cluster_def.job.add()
+      job_def.name = job_name
+
+      for i, task_address in enumerate(task_list):
+        try:
+          task_address = compat.as_bytes(task_address)
+        except TypeError:
+          raise TypeError(
+              "Task address %r must be bytes or unicode" % task_address)
+        job_def.tasks[i] = task_address

@@ -26,11 +26,11 @@ import linecache
 import re
 import sys
 import threading
-import warnings
 import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
@@ -442,41 +442,40 @@ class Tensor(object):
     raise TypeError("'Tensor' object is not iterable.")
 
   def __bool__(self):
-    """Dummy method to warn when a tensor is being used as a Python `bool`.
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
 
-    NOTE(mrry): This overload produces a warning when the user
-    inadvertently treats a `Tensor` as a boolean (e.g. in an `if`
-    statement). For example:
+    This overload raises a `TypeError` when the user inadvertently
+    treats a `Tensor` as a boolean (e.g. in an `if` statement). For
+    example:
 
     ```python
-    if tf.constant(True):  # Will warn.
+    if tf.constant(True):  # Will raise.
       # ...
 
-    if tf.constant(5) < tf.constant(7):  # Will warn.
+    if tf.constant(5) < tf.constant(7):  # Will raise.
       # ...
     ```
 
-    This functionality is deprecated. In future it will raise a `TypeError`.
-
-    Returns:
-      `True`.
+    Raises:
+      `TypeError`.
     """
-    warnings.warn("Using a `tf.Tensor` as a Python `bool` is deprecated. "
-                  "Use `if t is None:` instead of `if t:` in new code. "
-                  "A `TypeError` will be raised in future versions.",
-                  DeprecationWarning)
-    return True
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
 
   def __nonzero__(self):
-    """Dummy method to warn when a tensor is being used as a Python `bool`.
+    """Dummy method to prevent a tensor from being used as a Python `bool`.
 
-    NOTE(mrry): This is the Python 2.x counterpart to `__bool__()`
-    above.
+    This is the Python 2.x counterpart to `__bool__()` above.
 
-    Returns:
-      `True`.
+    Raises:
+      `TypeError`.
     """
-    return self.__bool__()
+    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
+                    "Use `if t is not None:` instead of `if t:` to test if a "
+                    "tensor is defined, and use the logical TensorFlow ops "
+                    "to test the value of a tensor.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
@@ -1788,6 +1787,7 @@ class Graph(object):
 
   @@add_to_collection
   @@get_collection
+  @@get_collection_ref
 
   @@as_graph_element
   @@get_operation_by_name
@@ -1836,12 +1836,15 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
+    self._function_gradient = collections.OrderedDict()
     # Default GraphDef versions
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     # Stack of colocate_with ops
     self._colocation_stack = []
+    # Set of tensors that are dangerous to feed!
+    self._unfeedable_tensors = set()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1898,6 +1901,7 @@ class Graph(object):
 
   @property
   def seed(self):
+    """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
@@ -1977,6 +1981,12 @@ class Graph(object):
         if bytesize >= (1 << 31) or bytesize < 0:
           raise ValueError("GraphDef cannot be larger than 2GB.")
       graph.library.function.extend(self._functions.values())
+      for func in self._function_gradient:
+        grad_def = function_pb2.GradientDef()
+        grad_def.function_name = func
+        grad_def.gradient_func = self._function_gradient[func]
+        graph.library.gradient.extend([grad_def])
+
     return graph
 
   def _is_function(self, name):
@@ -1999,7 +2009,7 @@ class Graph(object):
     """
     return self._functions[name]
 
-  def _add_function(self, function_def):
+  def _add_function(self, function_def, grad_function_name=None):
     """Adds a function to the graph.
 
     The function is specified as a [`FunctionDef`]
@@ -2012,6 +2022,9 @@ class Graph(object):
 
     Args:
       function_def: A `FunctionDef` protocol buffer.
+      grad_function_name: If not None, this specifies the name of a function
+                          that shall be used as the gradient function of
+                          the function being added.
     """
     previous_def = self._functions.get(function_def.signature.name, None)
     if previous_def:
@@ -2021,6 +2034,8 @@ class Graph(object):
         # No need to add again.
         return
     self._functions[function_def.signature.name] = function_def
+    if grad_function_name is not None:
+      self._function_gradient[function_def.signature.name] = grad_function_name
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -2117,10 +2132,11 @@ class Graph(object):
           # provide consistency between the device and the colocation
           # property.
           if ret.device and ret.device != colocation_op.device:
-            logging.warning("Tried to colocate with an op that had "
+            logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
-                            "Ignoring colocation property." % (
-                                ret.device, colocation_op.device))
+                            "Ignoring colocation property.",
+                            name, colocation_op.name,
+                            ret.device, colocation_op.device)
           else:
             ret._set_device(colocation_op.device)
 
@@ -2319,7 +2335,7 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method the `with` keyword
+    create a new graph explicitly. Use this method with the `with` keyword
     to specify that ops created within the scope of a block should be
     added to this graph.
 
@@ -2381,6 +2397,30 @@ class Graph(object):
     for name in set(names):
       self.add_to_collection(name, value)
 
+  def get_collection_ref(self, name):
+    """Returns a list of values in the collection with the given `name`.
+
+    If the collection exists, this returns the list itself, which can
+    be modified in place to change the collection.  If the collection does
+    not exist, it is created as an empty list and the list is returned.
+
+    This is different from `get_collection()` which always returns a copy of
+    the collection list if it exists and never creates an empty collection.
+
+    Args:
+      name: The key for the collection. For example, the `GraphKeys` class
+        contains many standard names for collections.
+
+    Returns:
+      The list of values in the collection with the given `name`, or an empty
+      list if no value has been added to that collection.
+    """
+    coll_list = self._collections.get(name, None)
+    if coll_list is None:
+      coll_list = []
+      self._collections[name] = coll_list
+    return coll_list
+
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
 
@@ -2396,11 +2436,14 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """
+    coll_list = self._collections.get(name, None)
+    if coll_list is None:
+      return []
     if scope is None:
-      return self._collections.get(name, list())
+      return list(coll_list)
     else:
       c = []
-      for item in self._collections.get(name, list()):
+      for item in coll_list:
         if hasattr(item, "name") and item.name.startswith(scope):
           c.append(item)
       return c
@@ -3045,6 +3088,14 @@ class Graph(object):
           del self._gradient_override_map[op_type]
   # pylint: enable=g-doc-return-or-yield
 
+  def prevent_feeding(self, tensor):
+    """Marks the given `tensor` as unfeedable in this graph."""
+    self._unfeedable_tensors.add(tensor)
+
+  def is_feedable(self, tensor):
+    """Returns `True` if and only if `tensor` is feedable."""
+    return tensor not in self._unfeedable_tensors
+
 
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
@@ -3522,6 +3573,25 @@ def add_to_collections(names, value):
     value: The value to add to the collections.
   """
   get_default_graph().add_to_collections(names, value)
+
+
+def get_collection_ref(key):
+  """Wrapper for `Graph.get_collection_ref()` using the default graph.
+
+  See [`Graph.get_collection_ref()`](../../api_docs/python/framework.md#Graph.get_collection_ref)
+  for more details.
+
+  Args:
+    key: The key for the collection. For example, the `GraphKeys` class
+      contains many standard names for collections.
+
+  Returns:
+    The list of values in the collection with the given `name`, or an empty
+    list if no value has been added to that collection.  Note that this returns
+    the collection list itself, which can be modified in place to change the
+    collection.
+  """
+  return get_default_graph().get_collection_ref(key)
 
 
 def get_collection(key, scope=None):

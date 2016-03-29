@@ -59,7 +59,7 @@ from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 # Import things out of contrib
-from tensorflow import contrib
+import tensorflow.contrib as contrib
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
@@ -101,6 +101,8 @@ from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -117,8 +119,8 @@ _whitelist = set([app, compat, contrib, errors, flags, gfile, image,
 # strings of other modules.
 __all__ = make_all(__name__,
                    [framework_lib, array_ops, client_lib, constant_op,
-                    control_flow_ops, io_ops, math_ops, nn, script_ops,
-                    sparse_ops, state_ops, train])
+                    control_flow_ops, functional_ops, histogram_ops, io_ops,
+                    math_ops, nn, script_ops, sparse_ops, state_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -126,6 +128,7 @@ __all__ = make_all(__name__,
 __all__.extend([
     'AttrValue',
     'ClusterDef',
+    'ClusterSpec',
     'ConfigProto',
     'Event',
     'GPUOptions',
@@ -143,7 +146,7 @@ __all__.extend([
     'OptimizerOptions',
     'PaddingFIFOQueue',
     'RunOptions',
-    'RunOutputs',
+    'RunMetadata',
     'ServerDef',
     'SessionLog',
     'Summary',
@@ -183,6 +186,8 @@ __all__.extend([
     'complex64', 'complex64_ref',
     'complex128', 'complex128_ref',
     'double', 'double_ref',
+    'half', 'half_ref',
+    'float16', 'float16_ref',
     'float32', 'float32_ref',
     'float64', 'float64_ref',
     'int16', 'int16_ref',

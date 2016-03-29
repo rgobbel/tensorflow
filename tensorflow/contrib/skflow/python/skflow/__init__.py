@@ -1,5 +1,5 @@
 """Main Scikit Flow module."""
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -13,10 +13,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 ## Check existance of sklearn and it's version
-
-from __future__ import division, print_function, absolute_import
-
 try:
     import sklearn
 except ImportError:
@@ -36,4 +37,3 @@ from tensorflow.contrib.skflow.python.skflow import ops
 from tensorflow.contrib.skflow.python.skflow import preprocessing
 from tensorflow.contrib.skflow.python.skflow import models
 from tensorflow.contrib.skflow.python.skflow.trainer import TensorFlowTrainer
-

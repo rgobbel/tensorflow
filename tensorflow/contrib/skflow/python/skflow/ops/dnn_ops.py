@@ -1,5 +1,5 @@
 """TensorFlow ops for deep neural networks."""
-#  Copyright 2015-present Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,8 +12,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
-from __future__ import division, print_function, absolute_import
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -24,10 +25,10 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
     """Creates fully connected deep neural network subgraph.
 
     Args:
-        tenson_in: tensor or placeholder for input features.
+        tensor_in: tensor or placeholder for input features.
         hidden_units: list of counts of hidden units in each layer.
         activation: activation function between layers. Can be None.
-        keep_proba: if not None, will add a dropout layer with given
+        keep_prob: if not None, will add a dropout layer with given
                     probability.
 
     Returns:
@@ -42,4 +43,3 @@ def dnn(tensor_in, hidden_units, activation=tf.nn.relu, keep_prob=None):
                 if keep_prob:
                     tensor_in = dropout(tensor_in, keep_prob)
         return tensor_in
-
