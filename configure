@@ -60,11 +60,15 @@ while true; do
       CUDA_TOOLKIT_PATH=$default_cuda_path
     fi
   fi
-
+  if [[ -z "$TF_CUDA_VERSION" ]]; then
+    TF_CUDA_EXT=""
+  else
+    TF_CUDA_EXT=".$TF_CUDA_VERSION"
+  fi
   if [ "$OSNAME" == "Linux" ]; then
-    CUDA_RT_LIB_PATH="lib64/libcudart.so.${TF_CUDA_VERSION}"
+    CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
   elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_RT_LIB_PATH="lib/libcudart.${TF_CUDA_VERSION}.dylib"
+    CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
   fi
 
   if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
@@ -99,28 +103,27 @@ while true; do
     CUDNN_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
 
-  if [ "$OSNAME" == "Linux" ]; then
-    CUDA_DNN_LIB_PATH="lib64/libcudnn.so.${TF_CUDNN_VERSION}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn.so.${TF_CUDNN_VERSION}"
-  elif [ "$OSNAME" == "Darwin" ]; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn.${TF_CUDNN_VERSION}.dylib"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn.${TF_CUDNN_VERSION}.dylib"
-  fi
-
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
     TF_CUDNN_EXT=""
   else
     TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
   fi
+  if [ "$OSNAME" == "Linux" ]; then
+    CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
+  elif [ "$OSNAME" == "Darwin" ]; then
+    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
+  fi
+
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     break
-  fi
-  if [ "$OSNAME" == "Linux" ]; then
-    CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
-    if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
-      CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
-      break
-    fi
+  elif [ "$OSNAME" == "Linux" ]; then
+      CUDNN_PATH_FROM_LDCONFIG="$(ldconfig -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
+      if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
+	  CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+	  break
+      fi
   fi
   echo "Invalid path to cuDNN ${TF_CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
   echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}"
@@ -144,8 +147,8 @@ CUDA_TOOLKIT_PATH="$CUDA_TOOLKIT_PATH"
 # directories separately.
 CUDNN_INSTALL_PATH="$CUDNN_INSTALL_PATH"
 
-# The Cuda SDK version that should be used in this build (empty to use libcudart.so symlink)
-TF_CUDA_VERSION=$TF_CUDA_EXT
+# The Cuda SDK version that should be used in this build (empty to use system default)
+TF_CUDA_VERSION=$TF_CUDA_VERSION
 
 # The Cudnn version that should be used in this build
 TF_CUDNN_VERSION=$TF_CUDNN_VERSION
