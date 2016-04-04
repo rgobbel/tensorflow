@@ -18,7 +18,7 @@ def _parse_bazel_version(bazel_version):
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
-  if "bazel_version" in dir(native):
+  if "bazel_version" in dir(native) and native.bazel_version:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
     minimum_bazel_version = _parse_bazel_version(bazel_version)
     if minimum_bazel_version > current_bazel_version:
@@ -28,36 +28,47 @@ def check_version(bazel_version):
 
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
-
 load("//tensorflow/core:platform/default/build_config_root.bzl",
      "tf_cuda_tests_tags")
 
 # List of proto files for android builds
 def tf_android_core_proto_sources():
+  return ["//tensorflow/core:" + p
+          for p in tf_android_core_proto_sources_relative()]
+
+# As tf_android_core_proto_sources, but paths relative to
+# //third_party/tensorflow/core.
+def tf_android_core_proto_sources_relative():
     return [
-        "//tensorflow/core:example/example.proto",
-        "//tensorflow/core:example/feature.proto",
-        "//tensorflow/core:framework/allocation_description.proto",
-        "//tensorflow/core:framework/attr_value.proto",
-        "//tensorflow/core:framework/device_attributes.proto",
-        "//tensorflow/core:framework/function.proto",
-        "//tensorflow/core:framework/graph.proto",
-        "//tensorflow/core:framework/kernel_def.proto",
-        "//tensorflow/core:framework/log_memory.proto",
-        "//tensorflow/core:framework/op_def.proto",
-        "//tensorflow/core:framework/step_stats.proto",
-        "//tensorflow/core:framework/summary.proto",
-        "//tensorflow/core:framework/tensor.proto",
-        "//tensorflow/core:framework/tensor_description.proto",
-        "//tensorflow/core:framework/tensor_shape.proto",
-        "//tensorflow/core:framework/tensor_slice.proto",
-        "//tensorflow/core:framework/types.proto",
-        "//tensorflow/core:framework/versions.proto",
-        "//tensorflow/core:lib/core/error_codes.proto",
-        "//tensorflow/core:protobuf/config.proto",
-        "//tensorflow/core:protobuf/saver.proto",
-        "//tensorflow/core:util/saved_tensor_slice.proto",
+        "example/example.proto",
+        "example/feature.proto",
+        "framework/allocation_description.proto",
+        "framework/attr_value.proto",
+        "framework/device_attributes.proto",
+        "framework/function.proto",
+        "framework/graph.proto",
+        "framework/kernel_def.proto",
+        "framework/log_memory.proto",
+        "framework/op_def.proto",
+        "framework/step_stats.proto",
+        "framework/summary.proto",
+        "framework/tensor.proto",
+        "framework/tensor_description.proto",
+        "framework/tensor_shape.proto",
+        "framework/tensor_slice.proto",
+        "framework/types.proto",
+        "framework/versions.proto",
+        "lib/core/error_codes.proto",
+        "protobuf/config.proto",
+        "protobuf/saver.proto",
+        "util/saved_tensor_slice.proto",
   ]
+
+# Returns the list of pb.h headers that are generated for
+# tf_android_core_proto_sources().
+def tf_android_core_proto_headers():
+  return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
+          for p in tf_android_core_proto_sources_relative()]
 
 
 def if_cuda(a, b=[]):
@@ -70,7 +81,14 @@ def if_cuda(a, b=[]):
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY",] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
-          select({"//tensorflow:darwin": [],
+          select({"//tensorflow:android": [
+                    "-mfpu=neon",
+                    "-std=c++11",
+                    "-DMIN_LOG_LEVEL=0",
+                    "-DTF_LEAN_BINARY",
+                    "-O2",
+                  ],
+                  "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
 
@@ -193,9 +211,10 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
+def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+               suffix=""):
   name = name.replace(".cc", "")
-  native.cc_test(name="%s" % (name.replace("/", "_")),
+  native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
                  size=size,
                  srcs=["%s.cc" % (name)],
                  copts=tf_copts(),
@@ -206,10 +225,28 @@ def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium"):
                  tags=tags,)
 
 
+def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium"):
+  tf_cc_test(name=name,
+             deps=deps,
+             tags=tags + ["manual"],
+             data=data,
+             size=size)
+  tf_cc_test(name=name,
+             suffix="_gpu",
+             deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
+             linkstatic=if_cuda(1, 0),
+             tags=tags + tf_cuda_tests_tags(),
+             data=data,
+             size=size)
+
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium"):
   for t in tests:
     tf_cc_test(t, deps, linkstatic, tags=tags, size=size)
+
+def tf_cuda_cc_tests(tests, deps, tags=[], size="medium"):
+  for t in tests:
+    tf_cuda_cc_test(t, deps, tags=tags, size=size)
 
 # Build defs for TensorFlow kernels
 

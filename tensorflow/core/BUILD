@@ -377,7 +377,10 @@ cc_library(
 
 cc_library(
     name = "math_grad",
-    srcs = ["ops/math_grad.cc"],
+    srcs = [
+        "ops/math_grad.cc",
+        "ops/random_grad.cc",
+    ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -538,6 +541,8 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
+load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
 filegroup(
@@ -606,19 +611,14 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Config setting for determining if we are building for Android.
-config_setting(
-    name = "android",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
-)
-
-ANDROID_TF_COPTS = [
-    "-mfpu=neon",
-    "-std=c++11",
-    "-DMIN_LOG_LEVEL=0",
-    "-DTF_LEAN_BINARY",
+ANDROID_TF_LITE_HDRS = [
+    "framework/tensor.h",
+    "platform/default/integral_types.h",
+    "platform/env.h",
+    "platform/logging.h",
+    "platform/platform.h",
+    "platform/types.h",
+    "public/session.h",
 ]
 
 # Native library support for Android applications.
@@ -634,23 +634,13 @@ ANDROID_TF_COPTS = [
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs = select({
-        ":android": ["//tensorflow/core:android_srcs"],
-        "//conditions:default": [],
-    }),
-    hdrs = [
-        "framework/tensor.h",
-        "platform/default/integral_types.h",
-        "platform/env.h",
-        "platform/logging.h",
-        "platform/platform.h",
-        "platform/types.h",
-        "public/session.h",
-    ],
-    copts = select({
-        ":android": ANDROID_TF_COPTS + ["-Os"],
-        "//conditions:default": [],
-    }),
+    srcs =
+        select({
+            "//tensorflow:android": ["//tensorflow/core:android_srcs"],
+            "//conditions:default": [],
+        }),
+    hdrs = ANDROID_TF_LITE_HDRS,
+    copts = tf_copts() + ["-Os"],
     tags = [
         "manual",
         "notap",
@@ -669,17 +659,12 @@ cc_library(
 cc_library(
     name = "android_tensorflow_lib",
     srcs = select({
-        ":android": [
+        "//tensorflow:android": [
             ":android_op_registrations_and_gradients",
-            "//tensorflow/core/kernels:android_core_ops",
-            "//tensorflow/core/kernels:android_extended_ops",
         ],
         "//conditions:default": [],
     }),
-    copts = select({
-        ":android": ANDROID_TF_COPTS + ["-O2"],
-        "//conditions:default": [],
-    }),
+    copts = tf_copts(),
     tags = [
         "manual",
         "notap",
@@ -689,6 +674,7 @@ cc_library(
         "@re2//:re2",
         ":android_tensorflow_lib_lite",
         ":protos_cc",
+        "//tensorflow/core/kernels:android_tensorflow_kernels",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1158,7 +1144,7 @@ tf_cc_tests(
             "common_runtime/gpu/*_test.cc",
             # Run by tests below
             "common_runtime/constant_folding_test.cc",
-            "common_runtime/direct_session_test.cc",
+            "common_runtime/direct_session*_test.cc",
             "common_runtime/function_test.cc",
             "common_runtime/gpu/gpu_allocator_retry_test.cc",
             "common_runtime/gpu/gpu_bfc_allocator_test.cc",
@@ -1280,6 +1266,37 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "common_runtime/direct_session_with_tracking_alloc_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime/function_test",
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1348,6 +1365,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
@@ -1371,6 +1389,7 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
 )

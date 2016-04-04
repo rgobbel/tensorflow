@@ -32,6 +32,7 @@ from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+# go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
@@ -118,7 +119,7 @@ def bias_add(value, bias, data_format=None, name=None):
     bias: A 1-D `Tensor` with size matching the last dimension of `value`.
       Must be the same type as `value` unless `value` is a quantized type,
       in which case a different quantized type may be used.
-    data_format: A string. 'NHWC' and 'NCHW" are supported.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: A name for the operation (optional).
 
   Returns:
@@ -301,7 +302,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-    data_format: A string. 'NHWC' and 'NCHW" are supported.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
   Returns:
@@ -326,7 +327,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list of ints that has length >= 4.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-    data_format: A string. 'NHWC' and 'NCHW" are supported.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
   Returns:
