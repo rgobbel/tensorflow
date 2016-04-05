@@ -6,7 +6,7 @@ load("//google/protobuf:protobuf.bzl", "py_proto_library")
 # configure may change the following lines to '.X.Y' or similar
 CUDA_VERSION = ".7.5"
 
-CUDNN_VERSION = ".6.5"
+CUDNN_VERSION = ".4.0"
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):

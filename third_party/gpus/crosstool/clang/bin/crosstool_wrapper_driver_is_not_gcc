@@ -249,15 +249,6 @@ def InvokeNvcc(argv, log=False):
   out = ' -o ' + out_file[0]
 
   # "configure" uses the specific format to substitute the following string.
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
-  # Unofficial setting. DO NOT SUBMIT!!!
   supported_cuda_compute_capabilities = ["3.0",]
   nvccopts = ''
   for capability in supported_cuda_compute_capabilities:
