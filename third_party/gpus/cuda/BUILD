@@ -54,9 +54,11 @@ cc_library(
     includes = ["include/"],
     linkopts = [
         "-ldl",
-        "-lrt",
         "-lpthread",
-    ],
+    ] + select({
+        "//third_party/gpus/cuda:darwin": [],
+        "//conditions:default": ["-lrt"]
+    }),
     visibility = ["//visibility:public"],
 )
 
