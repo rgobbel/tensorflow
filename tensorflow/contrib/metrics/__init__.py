@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-<<<<<<< HEAD
-from __future__ import division, print_function, absolute_import
-=======
+"""Ops for evaluation metrics and summary statistics.
+
+## This package provides Ops for evaluation metrics and summary statistics.
+
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
->>>>>>> 99e298a84775fcfe91ce0e2d40566d4bd00f53f9
 
-from skflow import *
+# pylint: disable=unused-import,line-too-long,g-importing-member
+from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram

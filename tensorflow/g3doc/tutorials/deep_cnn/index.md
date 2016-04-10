@@ -15,8 +15,9 @@ by Alex Krizhevsky.
 
 ### Goals
 
-The goal of this tutorial is to build a relatively small convolutional neural
-network (CNN) for recognizing images. In the process, this tutorial:
+The goal of this tutorial is to build a relatively small [convolutional neural
+network](https://en.wikipedia.org/wiki/Convolutional_neural_network) (CNN) for
+recognizing images. In the process, this tutorial:
 
 1. Highlights a canonical organization for network architecture,
 training and evaluation.
@@ -129,8 +130,8 @@ artificially increase the data set size:
 Please see the [Images](../../api_docs/python/image.md) page for the list of
 available distortions. We also attach an
 [`image_summary`](../../api_docs/python/train.md#image_summary) to the images
-so that we may visualize them in TensorBoard.  This is a good practice to verify
-that inputs are built correctly.
+so that we may visualize them in [TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
+This is a good practice to verify that inputs are built correctly.
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:70%" src="../../images/cifar_image_summary.png">
