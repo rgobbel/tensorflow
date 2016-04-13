@@ -575,6 +575,9 @@ tf_gen_op_wrapper_py(
         "TensorArraySplit",
         "TensorArrayUnpack",
         "TensorArrayWrite",
+        "GetSessionHandle",
+        "GetSessionTensor",
+        "DeleteSessionTensor",
     ],
     require_shape_functions = True,
 )
@@ -810,6 +813,7 @@ py_library(
         "ops/rnn_cell.py",
         "ops/script_ops.py",
         "ops/seq2seq.py",
+        "ops/session_ops.py",
         "ops/sparse_grad.py",
         "ops/sparse_ops.py",
         "ops/standard_ops.py",
@@ -1116,6 +1120,7 @@ medium_kernel_test_list = glob([
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",
+    "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
 ])
 
 sharded_kernel_test_list = glob([

@@ -173,6 +173,7 @@ cc_library(
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -261,6 +262,7 @@ tf_kernel_libraries(
         "concat_op",
         "constant_op",
         "diag_op",
+        "batch_matrix_diag_op",
         "edit_distance_op",
         "gather_nd_op",
         "gather_op",
@@ -304,6 +306,23 @@ tf_kernel_libraries(
 )
 
 tf_cc_test(
+    name = "batch_norm_op_test",
+    size = "small",
+    deps = [
+        ":batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "concat_op_test",
     size = "small",
     deps = [
@@ -325,6 +344,23 @@ tf_cc_test(
     size = "small",
     deps = [
         ":constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "example_parsing_ops_test",
+    size = "small",
+    deps = [
+        ":example_parsing_ops",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -523,6 +559,7 @@ tf_kernel_libraries(
         "padding_fifo_queue_op",
         "queue_ops",
         "random_shuffle_queue_op",
+        "session_ops",
         "stack_ops",
         "tensor_array_ops",
     ],
@@ -593,14 +630,16 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "tensor_array",
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":aggregate_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1282,6 +1321,7 @@ tf_kernel_libraries(
     name = "string",
     prefixes = [
         "string_to_hash_bucket_op",
+        "reduce_join_op",
     ],
     deps = [
         "//tensorflow/core:framework",
@@ -1497,6 +1537,7 @@ filegroup(
         "restore_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
+        "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
         "sparse_to_dense_op.cc",

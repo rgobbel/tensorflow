@@ -143,7 +143,6 @@ cc_library(
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
-        "lib/core/command_line_flags.h",  # TODO(vrv): Delete.
         "lib/core/errors.h",
         "lib/core/notification.h",
         "lib/core/status.h",
@@ -245,6 +244,7 @@ tf_cuda_library(
         "framework/register_types.h",
         "framework/resource_mgr.h",
         "framework/selective_registration.h",
+        "framework/session_state.h",
         "framework/tensor.h",
         "framework/tensor_shape.h",
         "framework/tensor_slice.h",
@@ -267,6 +267,7 @@ tf_cuda_library(
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
+        "util/stat_summarizer.h",
         "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
@@ -542,7 +543,6 @@ tf_cuda_library(
 
 # Android-specific BUILD targets
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources")
-load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_sources_relative")
 load("//tensorflow:tensorflow.bzl", "tf_android_core_proto_headers")
 
 # List of protos we want on android
@@ -589,8 +589,6 @@ filegroup(
             "lib/png/*.cc",
             "util/events_writer.cc",
             "util/events_writer.h",
-            "util/reporter.cc",
-            "util/reporter.h",
             # Exclude all protobuf/google headers except protobuf_android.h
             "platform/google/cord_coding.h",
             "platform/google/dynamic_annotations.h",
@@ -602,8 +600,6 @@ filegroup(
             "platform/google/*.cc",
             "platform/google/test_benchmark.cc",
             "platform/google/test_benchmark.h",
-            "platform/test_benchmark.h",
-            "platform/default/test_benchmark.cc",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/*.cc",
             "common_runtime/gpu_device_factory.cc",
@@ -856,6 +852,7 @@ filegroup(
         "framework/partial_tensor_shape.h",
         "framework/rendezvous.h",
         "framework/selective_registration.h",
+        "framework/session_state.h",
         "framework/tensor.h",
         "framework/tensor_reference.h",
         "framework/tensor_shape.h",
@@ -1268,6 +1265,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
     ],

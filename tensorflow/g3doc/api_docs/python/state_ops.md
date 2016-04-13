@@ -120,9 +120,12 @@ variable to its initial value.
 ##### Args:
 
 
-*  <b>`initial_value`</b>: A `Tensor`, or Python object convertible to a `Tensor`.
-    The initial value for the Variable. Must have a shape specified unless
-    `validate_shape` is set to False.
+*  <b>`initial_value`</b>: A `Tensor`, or Python object convertible to a `Tensor`,
+    which is the initial value for the Variable. The initial value must have
+    a shape specified unless `validate_shape` is set to False. Can also be a
+    callable with no argument that returns the initial value when called. In
+    that case, `dtype` must be specified. (Note that initializer functions
+    from init_ops.py must first be bound to a shape before being used here.)
 *  <b>`trainable`</b>: If `True`, the default, also adds the variable to the graph
     collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
     the default list of variables to use by the `Optimizer` classes.
@@ -781,7 +784,7 @@ checkpoints per device.
 
 - - -
 
-#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta')` {#Saver.save}
+#### `tf.train.Saver.save(sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix='meta', write_meta_graph=True)` {#Saver.save}
 
 Saves variables.
 
@@ -807,6 +810,8 @@ path can be passed directly to a call to `restore()`.
     managed by the saver to keep track of recent checkpoints.  Defaults to
     'checkpoint'.
 *  <b>`meta_graph_suffix`</b>: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+*  <b>`write_meta_graph`</b>: `Boolean` indicating whether or not to write the meta
+    graph file.
 
 ##### Returns:
 

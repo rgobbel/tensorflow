@@ -242,7 +242,7 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
     current_size = unit_shard_size
     if i < remaining_rows:
       current_size += 1
-    shards.append(vs.get_variable(name + "_%d" % i, [current_size, shape[1]],
+    shards.append(vs.get_variable(name + "_%d" % i, [current_size] + shape[1:],
                                   dtype=dtype))
   return shards
 
@@ -659,6 +659,42 @@ class MultiRNNCell(RNNCell):
           cur_inp, new_state = cell(cur_inp, cur_state)
           new_states.append(new_state)
     return cur_inp, array_ops.concat(1, new_states)
+
+
+class SlimRNNCell(RNNCell):
+  """A simple wrapper for slim.rnn_cells."""
+
+  def __init__(self, cell_fn):
+    """Create a SlimRNNCell from a cell_fn.
+
+    Args:
+      cell_fn: a function which takes (inputs, state, scope) and produces the
+        outputs and the new_state. Additionally when called with inputs=None and
+        state=None it should return (initial_outputs, initial_state).
+
+    Raises:
+      TypeError: if cell_fn is not callable
+      ValueError: if cell_fn cannot produce a valid initial state.
+    """
+    if not callable(cell_fn):
+      raise TypeError("cell_fn %s needs to be callable", cell_fn)
+    self._cell_fn = cell_fn
+    self._cell_name = cell_fn.func.__name__
+    _, init_state = self._cell_fn(None, None)
+    state_shape = init_state.get_shape()
+    self._state_size = state_shape.with_rank(2)[1].value
+    if self._state_size is None:
+      raise ValueError("Initial state created by %s has invalid shape %s",
+                       self._cell_name, state_shape)
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  def __call__(self, inputs, state, scope=None):
+    scope = scope or self._cell_name
+    output, state = self._cell_fn(inputs, state, scope=scope)
+    return output, state
 
 
 def linear(args, output_size, bias, bias_start=0.0, scope=None):
