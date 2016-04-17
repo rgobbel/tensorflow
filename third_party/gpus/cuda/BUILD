@@ -1,9 +1,12 @@
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 load("/tensorflow/tensorflow", "if_cuda")
+load("platform", "platform_libs_dir")
 load("platform", "cuda_library_path")
 load("platform", "cuda_static_library_path")
 load("platform", "cudnn_library_path")
+load("platform", "cuda_extras_dir")
+load("platform", "cupti_library_path")
 load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
@@ -126,6 +129,24 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "cupti_headers",
+    hdrs = glob([
+        "**/*.h",
+    ]),
+    includes = [".", "{}/include/".format(cuda_extras_dir("CUPTI"))],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cupti_dsos",
+    data = [
+        cupti_library_path(),
+    ],
+    visibility = ["//visibility:public"],
+)
+
+
 # TODO(opensource): for now, we have to invoke the cuda_config.sh manually in the source tree.
 # This rule checks if Cuda libraries in the source tree has been properly configured.
 # The output list makes bazel runs this rule first if the Cuda files are missing.
@@ -141,11 +162,13 @@ genrule(
         "include/cuda.h",
         "include/cublas.h",
         "include/cudnn.h",
+        "{}/include/cupti.h".format(cuda_extras_dir("CUPTI")),
         cuda_static_library_path("cudart"),
         cuda_library_path("cublas"),
         cudnn_library_path(),
         cuda_library_path("cudart"),
         cuda_library_path("cufft"),
+        cupti_library_path()
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
@@ -154,7 +177,9 @@ genrule(
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([
            "mkdir -p $(@D)/include",
-           "mkdir -p $(@D)/lib64",
+           "mkdir -p $(@D)/{}".format(platform_libs_dir()),
+           "mkdir -p $(@D)/{}/include".format(cuda_extras_dir("CUPTI")),
+           "mkdir -p $(@D)/{}".format(extras_library_dir("CUPTI")),
            "touch $(@D)/include/cuda.h",
            "touch $(@D)/include/cublas.h",
            "touch $(@D)/include/cudnn.h",
@@ -162,7 +187,8 @@ genrule(
            "touch $(@D)/{}".format(cuda_library_path("cublas")),
            "touch $(@D)/{}".format(cudnn_library_path()),
            "touch $(@D)/{}".format(cuda_library_path("cudart")),
-           "touch $(@D)/{}".format(cuda_library_path("cufft"))
+           "touch $(@D)/{}".format(cuda_library_path("cufft"))",
+           "touch $(@D)/{}".format(cupti_library_path())
          ]),
     ),
     local = 1,

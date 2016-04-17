@@ -125,6 +125,8 @@ if [ "$OSNAME" == "Linux" ]; then
   CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
   CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
   CUDA_FFT_LIB_PATH="lib64/libcufft.so${TF_CUDA_EXT}"
+  CUPTI_LIB_DIR="extras/CUPTI/lib64"
+  CUPTI_LIB_PATH="${CUPTI_LIB_DIR}/libcupti.so${TF_CUDA_EXT}"
   READLINK_CMD="readlink"
 elif [ "$OSNAME" == "Darwin" ]; then
   CUDA_LIB_PATH="lib"
@@ -134,6 +136,8 @@ elif [ "$OSNAME" == "Darwin" ]; then
   CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
   CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   CUDA_FFT_LIB_PATH="lib/libcufft${TF_CUDA_EXT}.dylib"
+  CUPTI_LIB_DIR="extras/CUPTI/lib"
+  CUPTI_LIB_PATH="${CUPTI_LIB_DIR}/libcupti${TF_CUDA_EXT}.dylib"
   READLINK_CMD="greadlink"
 fi
 
@@ -141,11 +145,13 @@ if [ "$CHECK_ONLY" == "1" ]; then
   CheckAndLinkToSrcTree CudaError include/cuda.h
   CheckAndLinkToSrcTree CudaError include/cublas.h
   CheckAndLinkToSrcTree CudnnError include/cudnn.h
+  CheckAndLinkToSrcTree CudaError extras/CUPTI/include/cupti.h
   CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_STATIC_PATH
   CheckAndLinkToSrcTree CudaError $CUDA_BLAS_LIB_PATH
   CheckAndLinkToSrcTree CudnnError $CUDA_DNN_LIB_PATH
   CheckAndLinkToSrcTree CudaError $CUDA_RT_LIB_PATH
   CheckAndLinkToSrcTree CudaError $CUDA_FFT_LIB_PATH
+  CheckAndLinkToSrcTree CudaError $CUPTI_LIB_PATH
   exit 0
 fi
 
@@ -154,6 +160,10 @@ fi
 
 if test ! -e ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}; then
   CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}"
+fi
+
+if test ! -e ${CUDA_TOOLKIT_PATH}/${CUPTI_LIB_PATH}; then
+  CudaError "cannot find ${CUDA_TOOLKIT_PATH}/${CUPTI_LIB_PATH}"
 fi
 
 if test ! -d ${CUDNN_INSTALL_BASEDIR}; then
@@ -211,6 +221,10 @@ echo "Setting up Cuda bin"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/bin $OUTPUTDIR/third_party/gpus/cuda/bin || exit -1
 echo "Setting up Cuda nvvm"
 LinkAllFiles ${CUDA_TOOLKIT_PATH}/nvvm $OUTPUTDIR/third_party/gpus/cuda/nvvm || exit -1
+echo "Setting up CUPTI include"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/extras/CUPTI/include $OUTPUTDIR/third_party/gpus/cuda/extras/CUPTI/include || exit -1
+echo "Setting up CUPTI ${CUPTI_LIB_DIR}"
+LinkAllFiles ${CUDA_TOOLKIT_PATH}/${CUPTI_LIB_DIR} $OUTPUTDIR/third_party/gpus/cuda/${CUPTI_LIB_DIR} || exit -1
 
 # Set up symbolic link for cudnn
 ln -sf $CUDNN_HEADER_DIR/cudnn.h $OUTPUTDIR/third_party/gpus/cuda/include/cudnn.h || exit -1
