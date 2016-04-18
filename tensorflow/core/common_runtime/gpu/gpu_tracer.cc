@@ -256,6 +256,24 @@ CUPTIManager *GetCUPTIManager() {
 
 // TODO(pbar) Move this to platform specific header file?
 // Static thread local variable for POD types.
+#if defined(__APPLE__)
+#define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
+  static __thread _Type_ s_obj_##_var_;                        \
+  namespace {                                                      \
+  class ThreadLocal_##_var_ {                                      \
+   public:                                                         \
+    ThreadLocal_##_var_() {}                                       \
+    void Init() {}                                                 \
+    inline _Type_ *pointer() const { return &s_obj_##_var_; }      \
+    inline _Type_ *safe_pointer() const { return &s_obj_##_var_; } \
+    _Type_ &get() const { return s_obj_##_var_; }                  \
+    bool is_native_tls() const { return true; }                    \
+                                                                   \
+   private:                                                        \
+    TF_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
+  } _var_;                                                         \
+  }  // namespace
+#else 
 #define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
   static thread_local _Type_ s_obj_##_var_;                        \
   namespace {                                                      \
@@ -272,7 +290,7 @@ CUPTIManager *GetCUPTIManager() {
     TF_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
   } _var_;                                                         \
   }  // namespace
-
+#endif
 // Thread-local state recording the most recent annotation (if any).
 // When non-null, this points to a string in the active annotation
 // of the current thread.  The annotation is guaranteed to remain live
