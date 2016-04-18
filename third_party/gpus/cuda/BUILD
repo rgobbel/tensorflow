@@ -6,6 +6,9 @@ load("platform", "cuda_library_path")
 load("platform", "cuda_static_library_path")
 load("platform", "cudnn_library_path")
 load("platform", "cuda_extras_dir")
+load("platform", "extras_library_dir")
+load("platform", "extras_library_path")
+load("platform", "cupti_dir")
 load("platform", "cupti_library_path")
 load("platform", "readlink_command")
 
@@ -183,11 +186,12 @@ genrule(
            "touch $(@D)/include/cuda.h",
            "touch $(@D)/include/cublas.h",
            "touch $(@D)/include/cudnn.h",
+           "touch $(@D)/{}/include/cupti.h".format(cuda_extras_dir("CUPTI")),
            "touch $(@D)/{}".format(cuda_static_library_path("cudart")),
            "touch $(@D)/{}".format(cuda_library_path("cublas")),
            "touch $(@D)/{}".format(cudnn_library_path()),
            "touch $(@D)/{}".format(cuda_library_path("cudart")),
-           "touch $(@D)/{}".format(cuda_library_path("cufft"))",
+           "touch $(@D)/{}".format(cuda_library_path("cufft")),
            "touch $(@D)/{}".format(cupti_library_path())
          ]),
     ),

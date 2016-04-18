@@ -33,19 +33,19 @@ def cudnn_library_path(version = cudnn_sdk_version()):
         return "lib64/libcudnn.so.{}".format(version)
 
 def cuda_extras_dir(name):
-    if PLATFORM = "Darwin":
+    if PLATFORM == "Darwin":
         return "extras/{}".format(name)
     else:
         return "extras/{}".format(name)
 
 def extras_library_dir(name):
-    if PLATFORM = "Darwin":
+    if PLATFORM == "Darwin":
         return "{}/lib".format(cuda_extras_dir(name))
     else:
         return "{}/lib64".format(cuda_extras_dir(name))
 
 def extras_library_path(name, version = cuda_sdk_version()):
-    if PLATFORM = "Darwin":
+    if PLATFORM == "Darwin":
         return "{}/lib{}.{}.dylib".format(extras_library_dir(name), name.lower(), version)
     else:
         return "{}/lib{}i.so{}".format(extras_library_dir(name), name.lower(), version)
