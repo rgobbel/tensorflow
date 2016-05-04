@@ -10,6 +10,11 @@ exports_files(["LICENSE"])
 load("/tensorflow/tensorflow", "tf_copts")
 load("/tensorflow/tensorflow", "tf_cuda_library")
 load("/third_party/gpus/cuda/platform", "cuda_library_path")
+load("/third_party/gpus/cuda/platform", "platform_libs_dir")
+load("/third_party/gpus/cuda/platform", "cuda_extras_dir")
+load("/third_party/gpus/cuda/platform", "extras_library_dir")
+load("/third_party/gpus/cuda/platform", "extras_library_path")
+load("/third_party/gpus/cuda/platform", "cupti_dir")
 
 cc_library(
     name = "gtest",
@@ -80,10 +85,10 @@ cc_library(
     data = [
         "//third_party/gpus/cuda:{}".format(cuda_library_path("cudart")),
     ],
-    linkopts = select({
-        "//third_party/gpus/cuda:darwin": ["-Wl,-rpath,third_party/gpus/cuda/lib"],
-        "//conditions:default": ["-Wl,-rpath,third_party/gpus/cuda/lib64"]
-    }),
+    linkopts = [
+        "-Wl,-rpath,third_party/gpus/cuda/{}".format(platform_libs_dir()),
+        "-Wl,-rpath,third_party/gpus/cuda/{}".format(cupti_dir()),
+            ],
     deps = [
         "//third_party/gpus/cuda:cudart",
     ],
