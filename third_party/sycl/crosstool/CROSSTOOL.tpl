@@ -12,6 +12,11 @@ default_toolchain {
   toolchain_identifier: "local_arm"
 }
 
+default_toolchain {
+  cpu: "aarch64"
+  toolchain_identifier: "local_linux"
+}
+
 toolchain {
   abi_version: "local"
   abi_libc_version: "local"

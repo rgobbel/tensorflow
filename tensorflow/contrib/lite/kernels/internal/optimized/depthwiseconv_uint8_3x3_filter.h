@@ -19,6 +19,7 @@ limitations under the License.
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
+#include <stddef.h>
 
 namespace tflite {
 namespace optimized_ops {
